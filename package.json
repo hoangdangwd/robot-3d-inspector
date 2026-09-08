@@ -14,5 +14,5 @@
     "three": "^0.185.1"
   },
   "description": "Three.js robot model and combat animation inspector",
-  "private": "true"
+  "private": true
 }
