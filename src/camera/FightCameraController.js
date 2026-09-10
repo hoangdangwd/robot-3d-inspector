@@ -154,7 +154,7 @@ export class FightCameraController {
   update(delta) {
     // 1. Free Orbit inspection & Turntable
     if (this.mode === 'ORBIT_INSPECT' || this.mode === 'TURNTABLE') {
-      this.controls.update();
+      this.controls.update(delta);
 
     } else if (this.mode === 'CINEMATIC_ORBIT') {
       this.cinematicAngle += delta * this.turntableSpeed;

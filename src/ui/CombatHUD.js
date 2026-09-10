@@ -1,430 +1,1134 @@
-/**
- * Streamlined 3D Model & Animation Inspector HUD
- * Minimalist, ultra-responsive, zero lag, and zero unnecessary visual clutter.
- */
+// ── icon system (inline SVG, no external deps) ─────────────────
+const ICONS = {
+  cube:    '<path d="m12 3 9 5v8l-9 5-9-5V8l9-5Z"/><path d="m3 8 9 5 9-5M12 13v8M7.5 5.5l9 5"/>',
+  arrow:   '<path d="M5 12h14m-5-5 5 5-5 5"/>',
+  rotate:  '<path d="M3 10a9 9 0 1 1 2 8M3 4v6h6"/>',
+  expand:  '<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/>',
+  grid:    '<rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
+  pause:   '<path d="M8 5v14M16 5v14"/>',
+  play:    '<path d="m8 5 11 7-11 7V5Z"/>',
+  loop:    '<path d="m17 2 4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4m14-1v2a3 3 0 0 1-3 3H3"/>',
+  prev:    '<path d="M15 18l-6-6 6-6"/>',
+  next:    '<path d="M9 6l6 6-6 6"/>',
+  idle:    '<path d="M9 4h6v5H9zM7 13h10v8M12 9v4M4 13v5m16-5v5"/>',
+  guard:   '<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="M12 7v9m-4-5h8"/>',
+  punch:   '<path d="M3 10h6V7l3-3h6l3 4v8l-3 3h-7l-2-3H3M13 5v6m4-6v6M3 10v6"/>',
+  kick:    '<circle cx="10" cy="4" r="2"/><path d="m4 12 5-4 4 4 7-4M9 8l-1 7-4 6m4-6 7 1 6-4"/>',
+  victory: '<path d="M8 3h8v7a4 4 0 0 1-8 0V3Zm0 2H4v3a4 4 0 0 0 4 4m8-7h4v3a4 4 0 0 1-4 4M12 14v5m-5 2h10m-8-2h6"/>',
+  info:    '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/>',
+  mouse:   '<rect x="6" y="2" width="12" height="20" rx="6"/><path d="M12 2v7"/>',
+  check:   '<path d="m5 12 4 4L19 6"/>',
+  close:   '<path d="m6 6 12 12M6 18 18 6"/>',
+};
+
+const icon = (name, cls = '') =>
+  `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+     ${ICONS[name] || ICONS.cube}
+   </svg>`;
+
+// Stat label map (Vietnamese)
+const STAT_LABELS = {
+  power:    'Sức mạnh',
+  speed:    'Tốc độ',
+  guard:    'Phòng thủ',
+  range:    'Tầm đánh',
+  mobility: 'Cơ động',
+  armor:    'Giáp',
+};
+
+// Clip → icon mapping
+const CLIP_ICONS = {
+  IDLE:      'idle',
+  DEFENSE:   'guard',
+  STRIKE:    'punch',
+  HEAVY:     'kick',
+  SIGNATURE: 'victory',
+  SHOWCASE:  'victory',
+  MOVEMENT:  'rotate',
+  ATTACK:    'punch',
+  REACTION:  'info',
+  RECOVERY:  'idle',
+};
+
 export class CombatHUD {
-  constructor(options = {}) {
-    this.container = options.container || document.body;
-    this.onSelectClip = options.onSelectClip || (() => {});
-    this.onAttack = options.onAttack || this.onSelectClip;
-    this.onScrub = options.onScrub || (() => {});
-    this.onTogglePlay = options.onTogglePlay || (() => {});
-    this.onStepFrame = options.onStepFrame || (() => {});
-    this.onSpeedChange = options.onSpeedChange || (() => {});
-    this.onLoopToggle = options.onLoopToggle || (() => {});
-    this.onInPlaceToggle = options.onInPlaceToggle || (() => {});
-    this.onResetCamera = options.onResetCamera || (() => {});
-    this.onTurntableToggle = options.onTurntableToggle || (() => {});
-    this.onModelChange = options.onModelChange || (() => {});
-    this.onFileDrop = options.onFileDrop || (() => {});
-
-    this.isScrubbing = false;
-    this.isPlaying = true;
-    this.isTurntableActive = false;
-    this.isLooping = true;
-    this.isInPlace = true;
-
-    this.createDOM();
-    this.initEventListeners();
-    this.initKeyboardListeners();
-    this.initDragDrop();
+  constructor(options) {
+    this.options = options;
+    this.currentClipList = [];
+    this.family = 'CHARACTER';
+    this.visibleClips = [];
+    this._buildShell();
+    this._bindEvents();
   }
 
-  createDOM() {
-    this.root = document.createElement('div');
-    this.root.id = 'model-inspector-hud';
-    this.root.innerHTML = `
-      <!-- TOP BAR: Minimal Info & Quick Actions -->
-      <header class="inspector-top-bar">
-        <div class="top-left-info">
-          <div class="model-title" id="active-model-name">UNIT-02 Axelrod (@animated/2_animated.glb)</div>
-          <div class="model-specs-row">
-            <span class="spec-pill" id="spec-fps">60 FPS</span>
-            <span class="spec-pill"><span id="spec-triangles">6,768</span> tris</span>
-            <span class="spec-pill"><span id="spec-bones">35</span> bones</span>
-            <span class="spec-pill" id="spec-rig-type" style="display:none;"></span>
-            <span id="spec-vertices" style="display:none;"></span>
-            <span id="spec-meshes" style="display:none;"></span>
-            <span id="spec-materials" style="display:none;"></span>
-          </div>
-        </div>
+  // ── DOM construction ────────────────────────────────────────────
+  _buildShell() {
+    const shell = document.getElementById('app-shell');
+    shell.innerHTML = `
+<header class="topbar">
+  <a class="brand" href="/" aria-label="Robot Foundry home">
+    <span class="brand-mark">${icon('cube')}</span>ROBOT<span class="brand-light">FOUNDRY</span><span class="brand-period">®</span>
+  </a>
+  <nav class="top-nav">
+    <button class="nav-item active" id="nav-lab">Fighter lab<span class="tag">01</span></button>
+    <button class="nav-item" id="nav-fight">Fight mode<span class="tag">02</span></button>
+    <button class="nav-item" id="nav-history">History<span class="tag">03</span></button>
+    <button class="nav-item" id="nav-about">The project ${icon('arrow')}</button>
+  </nav>
+  <div class="build-label">
+    <span class="status-dot"></span> SYSTEM ONLINE <span style="border-left:1px solid var(--line);padding-left:12px;margin-left:4px;color:#a2a597">BUILD .02</span>
+  </div>
+</header>
 
-        <div class="top-right-controls">
-          <!-- Model Select -->
-          <div class="clip-selector-wrapper">
-            <label for="model-select">MODEL:</label>
-            <select id="model-select" class="hud-select" title="Chọn model"></select>
-          </div>
+<main class="site-main">
+  <section class="page-heading">
+    <div>
+      <div class="eyebrow">DESIGN. INSPECT. UNLEASH.</div>
+      <h1>Meet your next <span>heavy metal.</span></h1>
+      <p>Five fighters. Fifteen parts. Zero mercy.</p>
+    </div>
+    <div class="lab-tag">
+      ${icon('cube')}
+      <span>ROBOT DEVELOPMENT LAB<small>PROTOTYPE SERIES / VOL. 002</small></span>
+    </div>
+  </section>
 
-          <!-- Animation Clip Select -->
-          <div class="clip-selector-wrapper">
-            <label for="clip-select">ĐỘNG TÁC:</label>
-            <select id="clip-select" class="hud-select" title="Chọn Animation"></select>
-          </div>
-
-          <!-- Utility Toggles -->
-          <button class="hud-btn" id="btn-toggle-turntable" title="Xoay 360 tự động [T]">
-            🔄 Xoay 360°
-          </button>
-          <button class="hud-btn" id="btn-reset-camera" title="Đặt lại góc nhìn [O]">
-            📷 Reset Cam
-          </button>
-        </div>
-      </header>
-
-      <!-- DRAG OVERLAY -->
-      <div class="drop-overlay" id="drop-overlay">
-        <div class="drop-modal">
-          <span class="drop-icon">📥</span>
-          <span>Thả file <strong>.GLB</strong> để nạp vào võ đài...</span>
-        </div>
+  <div class="lab-layout">
+    <!-- ── Roster ─────────────────────────────────────────── -->
+    <aside>
+      <div class="section-heading">
+        <h2>THE ROSTER</h2><span class="count">05</span>
       </div>
-
-      <!-- TOAST NOTIFICATION -->
-      <div class="toast-notification" id="toast-notify">
-        <span id="toast-message">Ready</span>
+      <p class="section-desc">Pick your machine.</p>
+      <div class="fighter-list" id="fighter-list"></div>
+      <div class="roster-note">
+        ${icon('info')}<span>Different by design.<br/>Dangerous by default.</span>
       </div>
+    </aside>
 
-      <!-- BOTTOM PLAYBACK & SCRUBBER BAR -->
-      <footer class="bottom-playback-bar">
-        <!-- Controls Left -->
-        <div class="pb-left">
-          <button class="pb-icon-btn" id="btn-step-prev" title="Lùi 1 frame [←]">◀</button>
-          <button class="pb-icon-btn primary" id="btn-play-pause" title="Phát / Tạm dừng [Space]">⏸</button>
-          <button class="pb-icon-btn" id="btn-step-next" title="Tiến 1 frame [→]">▶</button>
+    <!-- ── Workspace ──────────────────────────────────────── -->
+    <div class="workspace">
+      <div class="showcase">
 
-          <div class="pb-clip-info">
-            <div class="clip-title" id="active-clip-name">Đang nạp animation...</div>
-            <div class="clip-timer" id="active-clip-time">0.00s / 0.00s</div>
-            <span id="active-clip-icon" style="display:none;"></span>
-          </div>
-        </div>
-
-        <!-- Scrubber Center -->
-        <div class="pb-center">
-          <div class="scrubber-wrapper">
-            <div class="scrubber-fill" id="scrubber-progress"></div>
-            <input type="range" id="timeline-slider" min="0" max="1000" value="0" step="1" title="Kéo để tua animation" />
-          </div>
-        </div>
-
-        <!-- Options Right -->
-        <div class="pb-right">
-          <!-- Speed Chips -->
-          <div class="speed-group">
-            <button class="speed-chip" data-speed="0.25">0.25x</button>
-            <button class="speed-chip" data-speed="0.5">0.5x</button>
-            <button class="speed-chip active" data-speed="1.0">1.0x</button>
-            <button class="speed-chip" data-speed="2.0">2.0x</button>
+        <!-- viewport -->
+        <div class="viewport" id="viewport-host">
+          <div id="viewport-anchor">
+            <div id="canvas-container" aria-hidden="true"></div>
           </div>
 
-          <!-- Loop & In-Place -->
-          <button class="badge-btn active" id="btn-toggle-loop" title="Lặp lại animation">🔁 Lặp</button>
-          <button class="badge-btn active" id="btn-toggle-inplace" title="Khóa di chuyển vị trí">⚓ Cố định</button>
-        </div>
-      </footer>
-    `;
+          <div class="viewport-top">
+            <span class="live-label"><span class="status-dot"></span> LIVE PREVIEW</span>
+            <span class="view-number">UNIT <span id="unit-num">01</span> / 05</span>
+          </div>
 
-    this.container.appendChild(this.root);
+          <div class="watermark" id="watermark">FORGE</div>
+
+          <!-- Fight HUD overlay (hidden in showcase mode) -->
+          <div class="fight-hud" id="fight-hud" style="display:none">
+            <div class="fight-bar fight-bar-a">
+              <span class="fight-name" id="fight-name-a">FIGHTER A</span>
+              <div class="fight-health-track"><div class="fight-health-fill" id="fight-hp-a"></div></div>
+              <div class="fight-stamina-track"><div class="fight-stamina-fill" id="fight-sta-a"></div></div>
+              <div class="fight-posture-track" title="Posture"><div class="fight-posture-fill" id="fight-pos-a"></div></div>
+            </div>
+            <div class="fight-status" id="fight-status">FIGHTING</div>
+            <div class="fight-result" id="fight-result" hidden>
+              <span id="fight-result-text"></span>
+              <button id="replay-watch-last" type="button">WATCH REPLAY</button>
+              <button id="replay-export" type="button">EXPORT REPLAY</button>
+              <button id="replay-import-btn" type="button">IMPORT</button>
+            </div>
+            <div class="fight-bar fight-bar-b">
+              <span class="fight-name" id="fight-name-b">FIGHTER B</span>
+              <div class="fight-health-track"><div class="fight-health-fill" id="fight-hp-b"></div></div>
+              <div class="fight-stamina-track"><div class="fight-stamina-fill" id="fight-sta-b"></div></div>
+              <div class="fight-posture-track" title="Posture"><div class="fight-posture-fill" id="fight-pos-b"></div></div>
+            </div>
+          </div>
+          <section class="coach-panel" id="coach-panel" aria-label="Live coach controls" style="display:none">
+            <div class="coach-panel-head">
+              <span class="coach-kicker">LIVE COACH / REACTIVE ONLY</span>
+              <span class="coach-privacy">NO AUDIO SAVED</span>
+            </div>
+            <div class="coach-controls">
+              <select id="coach-language" aria-label="Voice language">
+                <option value="en-US">English</option>
+                <option value="vi-VN">Tiếng Việt</option>
+              </select>
+              <button id="coach-mic" type="button" aria-pressed="false">MIC OFF</button>
+              <button id="timeout-open" type="button">TIME-OUT <span id="timeout-count">3</span></button>
+              <form id="coach-form">
+                <input id="coach-input" maxlength="160" autocomplete="off" placeholder="Jab him / Giữ khoảng cách" aria-label="Coach command" />
+                <button type="submit">SEND</button>
+              </form>
+            </div>
+            <div class="coach-feedback" id="coach-feedback" role="status" aria-live="polite">TEXT READY · ROBOT AUTONOMOUS</div>
+            <div class="capacity-meter" id="capacity-meter" title="Tactical capacity used / available"></div>
+            <div class="adherence-feedback" id="adherence-feedback" role="status" aria-live="polite" hidden></div>
+            <section class="timeout-editor" id="timeout-editor" hidden aria-label="Tactical time-out editor">
+              <div class="timeout-editor-head"><strong>TIME-OUT / PLAYBOOK REVIEW</strong><span id="timeout-review-state">DRAFT — NOT COMMITTED</span></div>
+              <div class="playbook-toolbar">
+                <label>TACTIC<select id="tactic-select" aria-label="Select tactic"></select></label>
+                <button id="tactic-new" type="button">NEW</button>
+                <button id="tactic-delete" type="button">DELETE</button>
+              </div>
+              <div class="timeout-fields">
+                <label>NAME<input id="tactic-name" maxlength="64" value="Right Hook Punish" /></label>
+                <label>GOAL<input id="tactic-goal" maxlength="160" value="React to a committed hook with a legal counter." /></label>
+                <label>PRIORITY<input id="tactic-priority" type="number" min="0" max="1" step="0.05" value="0.7" /></label>
+                <label>TRIGGER<select id="tactic-trigger-action"><option value="hook_right">ENEMY RIGHT HOOK</option><option value="hook_left">ENEMY LEFT HOOK</option><option value="jab">ENEMY JAB</option><option value="overhand">ENEMY OVERHAND</option></select></label>
+                <label>SCHEMA<select id="tactic-schema"><option value="1">ACTION SEQUENCE</option><option value="2">STRATEGY INTENTS</option></select></label>
+                <label>METHODS / SEQUENCE<input id="tactic-sequence" maxlength="240" value="slip_left, body_cross" /></label>
+                <label>REPEAT<input id="tactic-repeat" type="number" min="1" max="3" step="1" value="1" /></label>
+                <label>TIMEOUT TICKS<input id="tactic-timeout" type="number" min="1" max="900" step="1" value="180" /></label>
+                <label class="timeout-check"><input id="tactic-abort-edge" type="checkbox" checked /> ABORT NEAR EDGE</label>
+              </div>
+              <div class="timeout-diff" id="timeout-diff">Edit a tactic and preview the complete playbook diff before commit.</div>
+              <div class="timeout-proposal"><input id="tactic-prompt" maxlength="180" placeholder="Ask for a patch, e.g. replace cross with jab" aria-label="Tactic patch request" /><button id="timeout-suggest" type="button">SUGGEST PATCH</button></div>
+              <div class="timeout-actions"><button id="timeout-preview" type="button">PREVIEW DIFF</button><button id="timeout-cancel" type="button">CANCEL · NO REFUND</button><button id="timeout-commit" type="button" disabled>COMMIT TACTIC</button></div>
+            </section>
+          </section>
+          <button class="fight-reset-btn" id="fight-reset" style="display:none">RESET FIGHT</button>
+
+          <!-- Replay HUD overlay (active during replay playback) -->
+          <div class="replay-hud" id="replay-hud" style="display:none">
+            <div class="replay-hud-header">
+              <span class="live-label"><span class="status-dot"></span> REPLAY PLAYBACK</span>
+              <span class="replay-matchup" id="replay-matchup">FORGE TITAN vs AEGIS PRIME</span>
+              <button class="replay-exit-btn" id="replay-exit-btn" type="button">EXIT REPLAY ✕</button>
+            </div>
+            <div class="replay-playback">
+              <button class="step-btn" id="replay-prev" title="Back 60 ticks (1s)">-60</button>
+              <button class="play-btn" id="replay-play-btn" aria-label="Pause">${icon('pause')}</button>
+              <button class="step-btn" id="replay-step" title="Step 1 tick">+1</button>
+              <button class="step-btn" id="replay-next" title="Forward 60 ticks (1s)">+60</button>
+              <input id="replay-timeline" type="range" min="0" max="1000" value="0" step="1" aria-label="Replay timeline" />
+              <span class="timecode" id="replay-timecode">0.00 / 0.00s</span>
+              <div class="playback-divider"></div>
+              <select id="replay-speed-select" aria-label="Replay speed">
+                <option value="0.5">0.5×</option>
+                <option value="1" selected>1× speed</option>
+                <option value="1.5">1.5×</option>
+                <option value="2">2×</option>
+              </select>
+            </div>
+          </div>
+          <input type="file" id="replay-file-input" accept=".json,application/json" style="display:none" />
+
+          <span class="stage-corner corner-tl"></span>
+          <span class="stage-corner corner-tr"></span>
+          <span class="stage-corner corner-bl"></span>
+          <span class="stage-corner corner-br"></span>
+
+          <div class="stage-label">
+            <span class="stage-label-line"></span>
+            <span id="stage-id">F-09</span>
+            <small>15-PART ARTICULATED BODY</small>
+          </div>
+
+          <div class="view-tools">
+            <button id="btn-rotate" class="tool-button" title="Auto rotate" aria-pressed="false" aria-label="Toggle auto rotate">${icon('rotate')}</button>
+            <button id="btn-grid"   class="tool-button active" title="Floor grid" aria-pressed="true"  aria-label="Toggle floor grid">${icon('grid')}</button>
+            <button id="btn-reset"  class="tool-button" title="Reset camera" aria-label="Reset camera">${icon('expand')}</button>
+          </div>
+
+          <div class="viewport-bottom">
+            <span>${icon('mouse')} DRAG TO ROTATE · SCROLL TO ZOOM</span>
+            <span class="fps-label" id="fps-label">REAL-TIME / — FPS</span>
+          </div>
+        </div><!-- /viewport -->
+
+        <!-- dossier -->
+        <aside class="dossier" id="dossier">
+          <div class="dossier-kicker">
+            <span>FIGHTER PROFILE</span><span id="dossier-id">F-09 — RF</span>
+          </div>
+          <div class="fighter-role">
+            <span class="role-dot" id="role-dot"></span>
+            <span id="fighter-role">HEAVY BRAWLER</span>
+          </div>
+          <h2 id="fighter-name">FORGE<span id="fighter-sub">— F-09</span></h2>
+          <p class="fighter-desc" id="fighter-desc"></p>
+          <div class="class-tags" id="class-tags"></div>
+          <div class="measurements">
+            <div><span>HEIGHT</span><strong id="fighter-height">2.28 m</strong></div>
+            <div><span>CHASSIS</span><strong>15 parts</strong></div>
+          </div>
+          <div class="stats" id="stat-bars"></div>
+          <button class="signature" id="sig-btn" aria-label="Play signature move">
+            <span class="sig-icon">${icon('victory')}</span>
+            <div>
+              <span>SIGNATURE MOVE</span>
+              <span class="sig-name" id="sig-name">—</span>
+            </div>
+          </button>
+          <div class="parts-badge">
+            ${icon('cube')}<span><strong>15</strong> rigid body parts</span>
+            <span class="parts-status">R15</span>
+          </div>
+        </aside>
+
+      </div><!-- /showcase -->
+
+      <!-- motion panel -->
+      <section class="motion-panel">
+        <div class="motion-heading">
+          <div class="section-heading">
+            <h2>MOTION LIBRARY</h2><span class="count" id="clip-count">06</span>
+          </div>
+          <span class="rigid-label"><span></span> RIGID PARTS. REAL ATTITUDE.</span>
+        </div>
+
+        <div class="motion-filters" id="motion-filters" role="group" aria-label="Nhóm animation">
+          ${[['CHARACTER','Đặc trưng'],['MOVEMENT','Di chuyển'],['ATTACK','Tấn công'],['DEFENSE','Phòng thủ'],['REACTION','Trúng đòn'],['RECOVERY','Ngã / đứng dậy'],['ALL','Tất cả']].map(([id,label]) => `<button data-family="${id}" aria-pressed="${id === 'CHARACTER'}">${label}</button>`).join('')}
+        </div>
+        <div class="clip-grid" id="clip-grid"></div>
+        <div class="motion-detail"><strong id="motion-phase">READY</strong><span id="motion-description"></span></div>
+        <p class="motion-disclaimer">Preview tại chỗ · Marker không áp damage · 1–6 chọn sáu động tác đầu trong nhóm</p>
+
+        <div class="playback">
+          <button class="step-btn" id="btn-prev" aria-label="Previous frame">${icon('prev')}</button>
+          <button class="play-btn" id="btn-play" aria-label="Pause">${icon('pause')}</button>
+          <button class="step-btn" id="btn-next" aria-label="Next frame">${icon('next')}</button>
+          <span class="playback-name" id="pb-name">Combat Idle <span>/ Playing</span></span>
+          <input id="timeline" type="range" min="0" max="1000" value="0" step="1" aria-label="Animation timeline" />
+          <span class="timecode" id="timecode">0.00 / 0.00s</span>
+          <div class="playback-divider"></div>
+          <button class="loop-btn active" id="btn-loop" aria-pressed="true" aria-label="Toggle loop">
+            ${icon('loop')}<span>Loop</span>
+          </button>
+          <select id="speed-select" aria-label="Playback speed">
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1× speed</option>
+            <option value="1.5">1.5×</option>
+            <option value="2">2×</option>
+          </select>
+        </div>
+      </section>
+    </div><!-- /workspace -->
+  </div><!-- /lab-layout -->
+
+  <footer class="site-footer">
+    <span><span class="footer-cross">+</span> NO SKINNING. NO SHORTCUTS. JUST STEEL.</span>
+    <span>200 CLIPS / 5 CHASSIS <span class="footer-cross">↗</span></span>
+  </footer>
+</main>
+
+<dialog id="about-dialog">
+  <button id="btn-close-about" class="tool-button" aria-label="Close">${icon('close')}</button>
+  <div class="eyebrow">ROBOT FOUNDRY / VOL. 002</div>
+  <h2>Small parts.<br/>Big personalities.</h2>
+  <p>A procedural robot fighting-game prototype. Each fighter is built from 15 independently articulated body parts, with armour and signature details attached to rigid joint groups.</p>
+  <div class="about-specs">
+    <span>01 Head</span><span>02 Torso segments</span>
+    <span>06 Arm segments</span><span>06 Leg segments</span>
+  </div>
+  <p>Built with JavaScript and Three.js. No imported models, skeletons, or skinning. Choose a fighter, drag to inspect, and try the motion library.</p>
+  <div class="dialog-hint">KEYBOARD: 1–6 select motion · SPACE play / pause · T auto-rotate · O reset camera</div>
+</dialog>
+
+<dialog id="history-dialog">
+  <button id="btn-close-history" class="tool-button" aria-label="Close">${icon('close')}</button>
+  <div class="eyebrow">ROBOT FOUNDRY / MATCH ARCHIVE</div>
+  <h2>Match History &amp; Replays</h2>
+  <p>Locally recorded bouts. Watch saved match replays offline or import replay files.</p>
+  <div class="history-actions">
+    <button id="btn-history-import" class="tool-button-text" type="button">${icon('arrow')} IMPORT REPLAY (.JSON)</button>
+    <button id="btn-history-clear" class="tool-button-text" type="button">CLEAR ALL</button>
+  </div>
+  <div class="history-list" id="history-list"></div>
+</dialog>
+
+<div class="toast" id="toast" role="status"></div>
+`;
+
+    this._el = id => document.getElementById(id);
   }
 
-  initEventListeners() {
-    // 1. Play / Pause
-    const btnPlayPause = document.getElementById('btn-play-pause');
-    if (btnPlayPause) {
-      btnPlayPause.addEventListener('click', () => {
-        this.isPlaying = this.onTogglePlay();
-        btnPlayPause.textContent = this.isPlaying ? '⏸' : '▶';
-      });
+  applySettings(settings = {}) {
+    const language = settings.language === 'vi-VN' ? 'vi-VN' : 'en-US';
+    const languageSelect = this._el('coach-language');
+    if (languageSelect) languageSelect.value = language;
+
+    const speed = Number.isFinite(settings.speed) ? Math.max(.25, Math.min(2, settings.speed)) : 1;
+    const speedSelect = this._el('speed-select');
+    if (speedSelect) speedSelect.value = String(speed);
+
+    const loop = settings.loop !== false;
+    const loopButton = this._el('btn-loop');
+    if (loopButton) {
+      loopButton.setAttribute('aria-pressed', String(loop));
+      loopButton.classList.toggle('active', loop);
     }
 
-    // 2. Step Prev / Next
-    const btnStepPrev = document.getElementById('btn-step-prev');
-    const btnStepNext = document.getElementById('btn-step-next');
-    if (btnStepPrev) {
-      btnStepPrev.addEventListener('click', () => {
-        this.isPlaying = false;
-        if (btnPlayPause) btnPlayPause.textContent = '▶';
-        this.onStepFrame(-1);
-      });
+    const grid = settings.gridVisible !== false;
+    const gridButton = this._el('btn-grid');
+    if (gridButton) {
+      gridButton.setAttribute('aria-pressed', String(grid));
+      gridButton.classList.toggle('active', grid);
     }
-    if (btnStepNext) {
-      btnStepNext.addEventListener('click', () => {
-        this.isPlaying = false;
-        if (btnPlayPause) btnPlayPause.textContent = '▶';
-        this.onStepFrame(1);
-      });
-    }
+  }
 
-    // 3. Timeline Scrubber
-    const slider = document.getElementById('timeline-slider');
-    if (slider) {
-      slider.addEventListener('mousedown', () => { this.isScrubbing = true; });
-      slider.addEventListener('touchstart', () => { this.isScrubbing = true; }, { passive: true });
-      slider.addEventListener('input', (e) => {
-        const frac = parseFloat(e.target.value) / 1000;
-        const prog = document.getElementById('scrubber-progress');
-        if (prog) prog.style.width = `${(frac * 100).toFixed(1)}%`;
-        this.onScrub(frac);
-      });
-      const endScrub = () => { this.isScrubbing = false; };
-      window.addEventListener('mouseup', endScrub);
-      window.addEventListener('touchend', endScrub);
-    }
+  // ── Events ──────────────────────────────────────────────────────
+  _bindEvents() {
+    const { options } = this;
+    const el = id => this._el(id);
 
-    // 4. Speed Chips
-    document.querySelectorAll('.speed-chip').forEach(chip => {
-      chip.addEventListener('click', () => {
-        document.querySelectorAll('.speed-chip').forEach(c => c.classList.remove('active'));
-        chip.classList.add('active');
-        const speed = parseFloat(chip.dataset.speed || 1.0);
-        this.onSpeedChange(speed);
-      });
+    el('btn-play').addEventListener('click', () => options.onTogglePlay());
+    el('btn-prev').addEventListener('click', () => options.onStepFrame(-1));
+    el('btn-next').addEventListener('click', () => options.onStepFrame(1));
+    el('btn-loop').addEventListener('click', () => {
+      const loop = el('btn-loop').getAttribute('aria-pressed') !== 'true';
+      el('btn-loop').setAttribute('aria-pressed', String(loop));
+      el('btn-loop').classList.toggle('active', loop);
+      options.onLoopToggle(loop);
+    });
+    el('timeline').addEventListener('input', e =>
+      options.onScrub(Number(e.target.value) / 1000)
+    );
+    el('speed-select').addEventListener('change', e =>
+      options.onSpeedChange(Number(e.target.value))
+    );
+    el('btn-rotate').addEventListener('click', () => {
+      const pressed = options.onTurntableToggle();
+      el('btn-rotate').classList.toggle('active', String(pressed) === 'true');
+      el('btn-rotate').setAttribute('aria-pressed', String(pressed) === 'true');
+    });
+    el('btn-grid').addEventListener('click', () => {
+      const active = el('btn-grid').getAttribute('aria-pressed') !== 'true';
+      el('btn-grid').classList.toggle('active', active);
+      el('btn-grid').setAttribute('aria-pressed', String(active));
+      options.onGridToggle?.(active);
+    });
+    el('btn-reset').addEventListener('click', () => {
+      options.onResetCamera();
+      el('btn-rotate').classList.remove('active');
+      el('btn-rotate').setAttribute('aria-pressed', 'false');
+    });
+    el('sig-btn').addEventListener('click', () => this.selectClip('signature'));
+    el('motion-filters').addEventListener('click', event => {
+      const button = event.target.closest('[data-family]');
+      if (!button) return;
+      this.family = button.dataset.family;
+      this.renderClips();
     });
 
-    // 5. Loop Toggle
-    const btnLoop = document.getElementById('btn-toggle-loop');
-    if (btnLoop) {
-      btnLoop.addEventListener('click', () => {
-        this.isLooping = !this.isLooping;
-        btnLoop.classList.toggle('active', this.isLooping);
-        this.onLoopToggle(this.isLooping);
-      });
-    }
+    // About dialog
+    el('nav-about').addEventListener('click', () => el('about-dialog').showModal());
+    el('btn-close-about').addEventListener('click', () => el('about-dialog').close());
+    el('about-dialog').addEventListener('click', e => {
+      const rect = el('about-dialog').getBoundingClientRect();
+      if (e.clientX < rect.left || e.clientX > rect.right ||
+          e.clientY < rect.top  || e.clientY > rect.bottom)
+        el('about-dialog').close();
+    });
 
-    // 6. In-Place Toggle
-    const btnInPlace = document.getElementById('btn-toggle-inplace');
-    if (btnInPlace) {
-      btnInPlace.addEventListener('click', () => {
-        this.isInPlace = !this.isInPlace;
-        btnInPlace.classList.toggle('active', this.isInPlace);
-        this.onInPlaceToggle(this.isInPlace);
-      });
-    }
+    // Match history dialog
+    el('nav-history').addEventListener('click', () => options.onOpenHistory?.());
+    el('btn-close-history').addEventListener('click', () => el('history-dialog').close());
+    el('history-dialog').addEventListener('click', e => {
+      const rect = el('history-dialog').getBoundingClientRect();
+      if (e.clientX < rect.left || e.clientX > rect.right ||
+          e.clientY < rect.top  || e.clientY > rect.bottom)
+        el('history-dialog').close();
+    });
+    el('btn-history-import').addEventListener('click', () => el('replay-file-input').click());
+    el('replay-import-btn')?.addEventListener('click', () => el('replay-file-input').click());
+    el('btn-history-clear').addEventListener('click', () => options.onClearHistory?.());
+    el('replay-watch-last')?.addEventListener('click', () => options.onWatchLastReplay?.());
 
-    // 7. Model Select Dropdown
-    const modelSelect = document.getElementById('model-select');
-    if (modelSelect) {
-      modelSelect.addEventListener('change', (e) => {
-        this.onModelChange(e.target.value);
-      });
-    }
+    // File input for replay import
+    el('replay-file-input').addEventListener('change', event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const maxBytes = 2 * 1024 * 1024;
+      if (file.size > maxBytes) {
+        options.onReplayImportError?.('replay file too large');
+        event.target.value = '';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        options.onReplayImportFile?.(reader.result);
+        event.target.value = '';
+      };
+      reader.onerror = () => {
+        options.onReplayImportError?.('replay file could not be read');
+        event.target.value = '';
+      };
+      reader.readAsText(file);
+    });
 
-    // 8. Clip Select Dropdown
-    const clipSelect = document.getElementById('clip-select');
-    if (clipSelect) {
-      clipSelect.addEventListener('change', (e) => {
-        this.onSelectClip(e.target.value);
-      });
-    }
+    // Replay playback controls
+    el('replay-play-btn').addEventListener('click', () => options.onReplayTogglePlay?.());
+    el('replay-prev').addEventListener('click', () => options.onReplayStep?.(-60));
+    el('replay-step').addEventListener('click', () => options.onReplayStep?.(1));
+    el('replay-next').addEventListener('click', () => options.onReplayStep?.(60));
+    el('replay-timeline').addEventListener('input', e => options.onReplayScrub?.(Number(e.target.value)));
+    el('replay-speed-select').addEventListener('change', e => options.onReplaySpeed?.(Number(e.target.value)));
+    el('replay-exit-btn').addEventListener('click', () => options.onReplayExit?.());
 
-    // 9. Turntable Toggle
-    const btnTurntable = document.getElementById('btn-toggle-turntable');
-    if (btnTurntable) {
-      btnTurntable.addEventListener('click', () => {
-        this.isTurntableActive = this.onTurntableToggle();
-        btnTurntable.classList.toggle('active', this.isTurntableActive);
-      });
-    }
+    el('nav-lab').addEventListener('click', () =>
+      document.querySelector('.lab-layout')?.scrollIntoView({ behavior: 'smooth' })
+    );
+    el('nav-fight').addEventListener('click', () => {
+      options.onFightToggle?.();
+    });
+    el('fight-reset').addEventListener('click', () => {
+      options.onFightReset?.();
+      this.showToast('FIGHT RESET');
+    });
+    el('replay-export').addEventListener('click', () => options.onReplayExport?.());
+    el('coach-language').addEventListener('change', event => options.onCoachLanguage?.(event.target.value));
+    el('coach-mic').addEventListener('click', () => options.onVoiceToggle?.());
+    el('timeout-open').addEventListener('click', () => options.onTimeoutOpen?.());
+    el('timeout-cancel').addEventListener('click', () => options.onTimeoutCancel?.());
+    el('timeout-preview').addEventListener('click', () => options.onTimeoutPreview?.(this.getTimeoutDraft()));
+    ['tactic-name', 'tactic-goal', 'tactic-priority', 'tactic-trigger-action', 'tactic-schema', 'tactic-sequence', 'tactic-repeat', 'tactic-timeout', 'tactic-abort-edge'].forEach(id => {
+      el(id).addEventListener('input', () => options.onTimeoutDraftChanged?.());
+      el(id).addEventListener('change', () => options.onTimeoutDraftChanged?.());
+    });
+    el('tactic-select').addEventListener('change', event => options.onTimeoutSelect?.(event.target.value));
+    el('tactic-new').addEventListener('click', () => options.onTimeoutNew?.());
+    el('tactic-delete').addEventListener('click', () => options.onTimeoutDelete?.());
+    el('timeout-suggest').addEventListener('click', () => options.onTimeoutSuggest?.(el('tactic-prompt').value.trim()));
+    el('timeout-commit').addEventListener('click', () => options.onTimeoutCommit?.());
+    el('coach-form').addEventListener('submit', event => {
+      event.preventDefault();
+      const input = el('coach-input');
+      const text = input.value.trim();
+      if (!text) return;
+      options.onCoachText?.(text, el('coach-language').value);
+      input.value = '';
+    });
 
-    // 10. Reset Camera
-    const btnResetCam = document.getElementById('btn-reset-camera');
-    if (btnResetCam) {
-      btnResetCam.addEventListener('click', () => {
-        this.onResetCamera();
-        if (btnTurntable) {
-          btnTurntable.classList.remove('active');
-          this.isTurntableActive = false;
-        }
-      });
-    }
-  }
-
-  initKeyboardListeners() {
-    window.addEventListener('keydown', (e) => {
-      // Avoid hotkeys when typing in inputs/selects
-      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
-
-      switch (e.code) {
-        case 'Space':
-          e.preventDefault();
-          this.isPlaying = this.onTogglePlay();
-          const btn = document.getElementById('btn-play-pause');
-          if (btn) btn.textContent = this.isPlaying ? '⏸' : '▶';
-          break;
-        case 'ArrowLeft':
-          e.preventDefault();
-          this.isPlaying = false;
-          this.onStepFrame(-1);
-          break;
-        case 'ArrowRight':
-          e.preventDefault();
-          this.isPlaying = false;
-          this.onStepFrame(1);
-          break;
-        case 'KeyT':
-          document.getElementById('btn-toggle-turntable')?.click();
-          break;
-        case 'KeyO':
-          document.getElementById('btn-reset-camera')?.click();
-          break;
-        case 'Digit1':
-        case 'Digit2':
-        case 'Digit3':
-        case 'Digit4':
-        case 'Digit5': {
-          const idx = parseInt(e.key, 10) - 1;
-          const select = document.getElementById('clip-select');
-          if (select && select.options[idx]) {
-            select.selectedIndex = idx;
-            this.onSelectClip(select.options[idx].value);
-          }
-          break;
-        }
+    // Keyboard
+    window.addEventListener('keydown', e => {
+      if (e.repeat || e.altKey || e.ctrlKey || e.metaKey || el('about-dialog').open) return;
+      const tag = e.target?.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+      if (e.code === 'Space') { e.preventDefault(); options.onTogglePlay(); }
+      else if (e.code === 'ArrowLeft')  { e.preventDefault(); options.onStepFrame(-1); }
+      else if (e.code === 'ArrowRight') { e.preventDefault(); options.onStepFrame(1);  }
+      else if (e.code === 'KeyT') el('btn-rotate').click();
+      else if (e.code === 'KeyO') el('btn-reset').click();
+      else if (/^Digit[1-6]$/.test(e.code)) {
+        const clip = this.visibleClips[Number(e.code.at(-1)) - 1];
+        if (clip) this.selectClip(clip.key);
       }
     });
   }
 
-  initDragDrop() {
-    const overlay = document.getElementById('drop-overlay');
+  // ── Roster ──────────────────────────────────────────────────────
+  populateRobotCatalog(catalog, selectedId) {
+    const list = this._el('fighter-list');
+    list.replaceChildren();
 
-    window.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      if (overlay) overlay.classList.add('visible');
+    catalog.forEach((robot, i) => {
+      const btn = document.createElement('button');
+      btn.className = `fighter-card${robot.id === selectedId ? ' selected' : ''}`;
+      btn.dataset.robotId = robot.id;
+      btn.setAttribute('aria-pressed', robot.id === selectedId);
+      btn.style.setProperty('--accent', `#${robot.colors.accent.toString(16).padStart(6, '0')}`);
+
+      // Portrait thumbnail: rendered later by main.js via setPortrait()
+      btn.innerHTML = `
+        <span class="card-number">0${i + 1}</span>
+        <span class="card-check">${icon('check')}</span>
+        <img class="fighter-thumb" id="thumb-${i}" alt="${robot.name} robot" />
+        <span class="fighter-card-copy">
+          <strong>${robot.shortName}</strong>
+          <span>${robot.archetype}</span>
+        </span>
+        <span class="card-arrow">${icon('arrow')}</span>`;
+
+      btn.addEventListener('click', () => this.options.onRobotChange(robot.id));
+      list.appendChild(btn);
+    });
+  }
+
+  // ── Active robot ────────────────────────────────────────────────
+  setActiveRobot(robot) {
+    const hex = c => `#${c.toString(16).padStart(6, '0')}`;
+    const accent = hex(robot.colors.accent);
+    document.documentElement.style.setProperty('--accent', accent);
+
+    // Roster highlight
+    document.querySelectorAll('[data-robot-id]').forEach((btn, i) => {
+      const active = btn.dataset.robotId === robot.id;
+      btn.classList.toggle('selected', active);
+      btn.setAttribute('aria-pressed', active);
+      // Stripe colour
+      if (active) btn.style.setProperty('--accent', accent);
     });
 
-    window.addEventListener('dragleave', (e) => {
-      if (e.relatedTarget === null && overlay) {
-        overlay.classList.remove('visible');
-      }
+    // Unit counter (index from catalog position)
+    const unitStr = String(
+      document.querySelectorAll('[data-robot-id]').length &&
+      [...document.querySelectorAll('[data-robot-id]')].findIndex(b => b.dataset.robotId === robot.id) + 1
+    ).padStart(2, '0');
+
+    this._el('unit-num').textContent     = unitStr;
+    this._el('watermark').textContent    = robot.shortName;
+    this._el('stage-id').textContent     = robot.series;
+    this._el('dossier-id').textContent   = `${robot.series} — RF`;
+    this._el('fighter-role').textContent = robot.archetype;
+    this._el('role-dot').style.background = accent;
+    this._el('fighter-name').firstChild.textContent = robot.shortName;
+    this._el('fighter-sub').textContent  = `— ${robot.series}`;
+    this._el('fighter-desc').textContent = robot.tagline;
+    this._el('fighter-height').textContent = `${robot.proportions.height.toFixed(2)} m`;
+    this._el('sig-name').textContent     = robot.signature;
+
+    // Class tags
+    const tags = this._el('class-tags');
+    tags.replaceChildren();
+    [robot.archetype.split(' ')[0], robot.proportions.height >= 2.4 ? 'TALL' : 'COMPACT'].forEach(t => {
+      const s = document.createElement('span');
+      s.textContent = t; tags.appendChild(s);
     });
 
-    window.addEventListener('drop', (e) => {
-      e.preventDefault();
-      if (overlay) overlay.classList.remove('visible');
-      const files = e.dataTransfer.files;
-      if (files && files.length > 0) {
-        const file = files[0];
-        if (/\.(glb|gltf)$/i.test(file.name)) {
-          this.onFileDrop(file);
+    // Stat bars
+    const bars = this._el('stat-bars');
+    bars.replaceChildren();
+    for (const [key, value] of Object.entries(robot.stats)) {
+      const div = document.createElement('div');
+      div.className = 'stat';
+      div.innerHTML = `
+        <div class="stat-head">
+          <span>${STAT_LABELS[key] ?? key}</span>
+          <strong>${value}<small>/100</small></strong>
+        </div>
+        <div class="stat-track">
+          <span style="width:${value}%;background:${accent}"></span>
+        </div>`;
+      bars.appendChild(div);
+    }
+  }
+
+  // ── Clip list ───────────────────────────────────────────────────
+  populateClipList(clips, active) {
+    this.currentClipList = clips;
+    this.activeClip = clips.find(c => c.key === active || c.id === active);
+    this.renderClips();
+    this.selectClipVisual(active);
+  }
+
+  renderClips() {
+    const clips = this.currentClipList;
+    this.visibleClips = clips.filter(c => this.family === 'ALL' || c.family === this.family);
+    this._el('motion-filters').querySelectorAll('[data-family]').forEach(b => b.setAttribute('aria-pressed', b.dataset.family === this.family));
+    const grid = this._el('clip-grid');
+    grid.replaceChildren();
+
+    this.visibleClips.forEach((clip, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'clip-button';
+      btn.dataset.clipKey = clip.key;
+      btn.dataset.motionId = clip.id;
+      btn.title = `${clip.duration.toFixed(2)}s · ${clip.description}`;
+      const selected = clip.id === this.activeClip?.id;
+      btn.classList.toggle('active', selected);
+      btn.setAttribute('aria-pressed', selected);
+      const iconName = CLIP_ICONS[clip.category] ?? 'idle';
+      btn.innerHTML = `
+        <span class="clip-icon">${icon(iconName)}</span>
+        <span>${clip.label}</span>
+        <kbd>${i < 6 ? i + 1 : ''}</kbd>`;
+      btn.addEventListener('click', () => this.selectClip(clip.key));
+      grid.appendChild(btn);
+    });
+
+    this._el('clip-count').textContent = `${this.visibleClips.length} / ${clips.length}`;
+  }
+
+  selectClip(key) {
+    this.options.onSelectClip(key);
+    this.selectClipVisual(key);
+  }
+
+  selectClipVisual(key) {
+    const clip = this.currentClipList.find(c => c.key === key || c.id === key);
+    if (!clip) return;
+    this.activeClip = clip;
+    if (this.family !== 'ALL' && this.family !== clip.family) {
+      this.family = clip.family;
+      this.renderClips();
+    }
+    this._el('motion-description').textContent = clip.description;
+    document.querySelectorAll('[data-clip-key]').forEach(btn => {
+      const active = btn.dataset.clipKey === clip.key;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', active);
+    });
+
+    this._el('pb-name').textContent = clip.label;
+  }
+
+  // ── Frame updates ───────────────────────────────────────────────
+  update(state, fps) {
+    const progress = state.duration > 0
+      ? (state.currentTime / state.duration * 100).toFixed(1)
+      : '0';
+
+    const tl = this._el('timeline');
+    tl.value = Math.round(state.currentTime / (state.duration || 1) * 1000);
+    tl.style.setProperty('--progress', `${progress}%`);
+
+    this._el('timecode').textContent =
+      `${state.currentTime.toFixed(2)} / ${state.duration.toFixed(2)}s`;
+
+    const paused = state.isPaused;
+    const playBtn = this._el('btn-play');
+    if (playBtn.getAttribute('aria-label') !== (paused ? 'Play' : 'Pause')) {
+      playBtn.innerHTML = icon(paused ? 'play' : 'pause');
+      playBtn.setAttribute('aria-label', paused ? 'Play' : 'Pause');
+    }
+    const fraction = state.currentTime / (state.duration || 1);
+    const clip = this.activeClip;
+    const impacts = clip?.impacts || [];
+    let phase = clip?.family || 'READY';
+    if (impacts.length) {
+      const next = impacts.find(t => fraction < t + .07);
+      phase = next === undefined ? 'RECOVERY' : fraction < next - .12 ? 'WIND-UP' : fraction < next - .025 ? 'STRIKE' : 'IMPACT';
+    }
+    if (clip?.exit === 'down' && fraction >= .99) phase = 'DOWN';
+    this._el('motion-phase').textContent = `${paused ? 'PAUSED · ' : ''}${phase}`;
+    const loopButton = this._el('btn-loop');
+    const forcedOnce = clip && ['once','hold'].includes(clip.playback);
+    loopButton.disabled = Boolean(forcedOnce);
+    loopButton.title = forcedOnce ? 'State transition: không lặp ngã / đứng dậy' : 'Lặp preview';
+
+    this._el('fps-label').textContent = `REAL-TIME / ${Math.round(fps)} FPS`;
+  }
+
+  // ── Portrait thumbnails ─────────────────────────────────────────
+  setPortrait(index, dataUrl) {
+    const img = document.getElementById(`thumb-${index}`);
+    if (img) img.src = dataUrl;
+  }
+
+  // ── Fight mode UI ───────────────────────────────────────────────
+  setFightMode(active) {
+    // Toggle visibility of showcase vs fight elements
+    document.querySelector('.site-main')?.classList.toggle('fight-mode-active', active);
+    const showcaseEls = document.querySelectorAll('.dossier, .motion-panel, .page-heading, aside');
+    showcaseEls.forEach(el => el.style.display = active ? 'none' : '');
+
+    const fightHud = this._el('fight-hud');
+    const fightReset = this._el('fight-reset');
+    const watermark = this._el('watermark');
+    if (fightHud) fightHud.style.display = active ? '' : 'none';
+    if (fightReset) fightReset.style.display = active ? '' : 'none';
+    if (watermark) watermark.style.display = active ? 'none' : '';
+
+    // Nav button states
+    document.getElementById('nav-lab')?.classList.toggle('active', !active);
+    document.getElementById('nav-fight')?.classList.toggle('active', active);
+
+    // Playback controls hidden in fight mode
+    const playback = document.querySelector('.playback');
+    if (playback) playback.style.display = active ? 'none' : '';
+    const coachPanel = this._el('coach-panel');
+    if (coachPanel) coachPanel.style.display = active ? '' : 'none';
+    if (!active) this.setCoachFeedback('TEXT READY · ROBOT AUTONOMOUS');
+  }
+
+  // ── Replay mode UI ──────────────────────────────────────────────
+  setReplayMode(active, info = {}) {
+    document.querySelector('.site-main')?.classList.toggle('fight-mode-active', active);
+    const showcaseEls = document.querySelectorAll('.dossier, .motion-panel, .page-heading, aside');
+    showcaseEls.forEach(el => el.style.display = active ? 'none' : '');
+
+    const fightHud = this._el('fight-hud');
+    const fightReset = this._el('fight-reset');
+    const coachPanel = this._el('coach-panel');
+    const replayHud = this._el('replay-hud');
+    const watermark = this._el('watermark');
+    const fightResult = this._el('fight-result');
+
+    if (fightHud) fightHud.style.display = active ? '' : 'none';
+    if (fightReset) fightReset.style.display = 'none';
+    if (coachPanel) coachPanel.style.display = 'none';
+    if (replayHud) replayHud.style.display = active ? '' : 'none';
+    if (watermark) watermark.style.display = active ? 'none' : '';
+    if (fightResult && !active) fightResult.hidden = true;
+
+    if (active && info.matchup) {
+      const matchupEl = this._el('replay-matchup');
+      if (matchupEl) matchupEl.textContent = info.matchup;
+    }
+
+    document.getElementById('nav-lab')?.classList.toggle('active', !active);
+    document.getElementById('nav-fight')?.classList.remove('active');
+  }
+
+  updateReplayHUD(replayState) {
+    if (!replayState) return;
+    const { tick, totalTicks, isPlaying, state, defA, defB } = replayState;
+
+    if (state) {
+      const { a, b, matchStatus, winnerId } = state;
+      const hpA = this._el('fight-hp-a');
+      const hpB = this._el('fight-hp-b');
+      const staA = this._el('fight-sta-a');
+      const staB = this._el('fight-sta-b');
+      const posA = this._el('fight-pos-a');
+      const posB = this._el('fight-pos-b');
+      const status = this._el('fight-status');
+
+      if (hpA) hpA.style.width = `${(a.health / a.maxHealth) * 100}%`;
+      if (hpB) hpB.style.width = `${(b.health / b.maxHealth) * 100}%`;
+      if (staA) staA.style.width = `${(a.stamina / a.maxStamina) * 100}%`;
+      if (staB) staB.style.width = `${(b.stamina / b.maxStamina) * 100}%`;
+      if (posA) posA.style.width = `${a.maxPosture ? (a.posture / a.maxPosture) * 100 : 100}%`;
+      if (posB) posB.style.width = `${b.maxPosture ? (b.posture / b.maxPosture) * 100 : 100}%`;
+
+      const nameA = this._el('fight-name-a');
+      const nameB = this._el('fight-name-b');
+      if (nameA) nameA.textContent = `${(defA?.shortName || a.definitionId).replace(/_/g, ' ').toUpperCase()} · ${Math.round(a.health)}HP`;
+      if (nameB) nameB.textContent = `${(defB?.shortName || b.definitionId).replace(/_/g, ' ').toUpperCase()} · ${Math.round(b.health)}HP`;
+
+      if (status) {
+        if (matchStatus === 'ko') {
+          status.textContent = `KO — ${winnerId?.replace(/_/g, ' ').toUpperCase()} WINS`;
+          status.classList.add('fight-ko');
+        } else if (matchStatus === 'time') {
+          status.textContent = `TIME — ${winnerId?.replace(/_/g, ' ').toUpperCase()} WINS`;
+          status.classList.add('fight-ko');
+        } else if (matchStatus === 'draw') {
+          status.textContent = 'TIME — DRAW';
+          status.classList.add('fight-ko');
         } else {
-          this.showToast('Vui lòng chọn định dạng file .GLB hoặc .GLTF');
+          status.textContent = `REPLAY · TICK ${tick} / ${totalTicks}`;
+          status.classList.remove('fight-ko');
         }
       }
-    });
+
+      const result = this._el('fight-result');
+      const resultText = this._el('fight-result-text');
+      if (result) {
+        if (state.matchResult) {
+          const winner = state.matchResult.winnerId?.replace(/_/g, ' ').toUpperCase();
+          const reason = state.matchResult.reason === 'ko' ? 'KNOCKOUT' : state.matchResult.reason === 'time' ? 'DECISION' : 'DRAW';
+          if (resultText) resultText.textContent = winner ? `REPLAY END · ${reason} · ${winner}` : `REPLAY END · ${reason}`;
+          result.hidden = false;
+        } else {
+          result.hidden = true;
+        }
+      }
+    }
+
+    const timeline = this._el('replay-timeline');
+    if (timeline) {
+      timeline.max = String(totalTicks);
+      timeline.value = String(tick);
+    }
+    const timecode = this._el('replay-timecode');
+    if (timecode) {
+      const curSec = (tick / 60).toFixed(1);
+      const totalSec = (totalTicks / 60).toFixed(1);
+      timecode.textContent = `${curSec}s / ${totalSec}s`;
+    }
+    const playBtn = this._el('replay-play-btn');
+    if (playBtn) {
+      playBtn.innerHTML = icon(isPlaying ? 'pause' : 'play');
+      playBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
+    }
   }
 
-  populateModelCatalog(catalog, selectedId) {
-    const titleEl = document.getElementById('active-model-name');
-    const select = document.getElementById('model-select');
-    const cur = catalog.find(m => m.id === selectedId) || catalog[0];
+  // ── Match history modal ─────────────────────────────────────────
+  openHistoryModal(results = [], replays = []) {
+    const dialog = this._el('history-dialog');
+    if (!dialog) return;
+    const list = this._el('history-list');
+    list.replaceChildren();
 
-    if (select) {
-      select.innerHTML = '';
-      catalog.forEach((model) => {
-        const opt = document.createElement('option');
-        opt.value = model.id;
-        opt.textContent = model.name;
-        opt.selected = model.id === (cur && cur.id);
-        select.appendChild(opt);
+    if (!results || results.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'history-empty';
+      empty.textContent = 'NO RECORDED MATCHES YET. ENTER FIGHT MODE TO RECORD BOUTS.';
+      list.appendChild(empty);
+    } else {
+      results.forEach(match => {
+        const item = document.createElement('div');
+        item.className = 'history-item';
+        const date = new Date(match.savedAt || Date.now());
+        const timeStr = `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        const defA = (match.definitionA || 'forge-titan').replace(/_/g, ' ').toUpperCase();
+        const defB = (match.definitionB || 'aegis-prime').replace(/_/g, ' ').toUpperCase();
+        const winner = match.winnerId ? match.winnerId.replace(/_/g, ' ').toUpperCase() : 'DRAW';
+        const reason = match.reason === 'ko' ? 'KNOCKOUT' : match.reason === 'time' ? 'DECISION' : 'DRAW';
+        const hpText = match.finalHealth && Number.isFinite(match.finalHealth.fighter_a) && Number.isFinite(match.finalHealth.fighter_b)
+          ? `HP: ${Math.round(match.finalHealth.fighter_a)} vs ${Math.round(match.finalHealth.fighter_b)}`
+          : '';
+        const durText = match.tick ? `${Math.round(match.tick / 60)}s` : '';
+
+        // Only an explicit matchId may associate a saved replay with a result.
+        const savedReplayEntry = replays.find(r => r.matchId && r.matchId === match.id) || null;
+
+        const main = document.createElement('div');
+        main.className = 'history-item-main';
+        const head = document.createElement('div');
+        head.className = 'history-item-head';
+        const time = document.createElement('span');
+        time.className = 'history-time';
+        time.textContent = timeStr;
+        const outcome = document.createElement('span');
+        outcome.className = `history-outcome outcome-${['ko', 'time', 'draw'].includes(match.reason) ? match.reason : 'ko'}`;
+        outcome.textContent = `${reason} · ${winner}`;
+        head.append(time, outcome);
+        const matchup = document.createElement('div');
+        matchup.className = 'history-matchup';
+        matchup.textContent = `${defA} vs ${defB}`;
+        const meta = document.createElement('div');
+        meta.className = 'history-meta';
+        meta.textContent = `${durText}${hpText ? ` · ${hpText}` : ''}`;
+        main.append(head, matchup, meta);
+        item.appendChild(main);
+
+        if (savedReplayEntry) {
+          const actions = document.createElement('div');
+          actions.className = 'history-item-actions';
+          const playButton = document.createElement('button');
+          playButton.className = 'history-play-btn';
+          playButton.type = 'button';
+          playButton.textContent = '▶ WATCH';
+          const exportButton = document.createElement('button');
+          exportButton.className = 'history-export-btn';
+          exportButton.type = 'button';
+          exportButton.textContent = 'EXPORT';
+          actions.append(playButton, exportButton);
+          item.appendChild(actions);
+          playButton.addEventListener('click', () => {
+            dialog.close();
+            this.options.onStartReplay?.(savedReplayEntry.replay);
+          });
+          exportButton.addEventListener('click', () => {
+            this.options.onExportSavedReplay?.(savedReplayEntry.replay);
+          });
+        }
+
+        list.appendChild(item);
       });
     }
 
-    if (titleEl && cur) {
-      titleEl.textContent = cur.path ? `${cur.name} (${cur.path})` : cur.name;
-    }
-
-    const rigTypeEl = document.getElementById('spec-rig-type');
-    if (rigTypeEl) {
-      const isR15 = cur && /r15/i.test(`${cur.id || ''} ${cur.category || ''} ${cur.name || ''}`);
-      rigTypeEl.textContent = isR15 ? 'R15 RIG' : '';
-      rigTypeEl.style.display = isR15 ? '' : 'none';
-    }
+    dialog.showModal();
   }
 
-  populateClipList(clipList, activeKey) {
-    const select = document.getElementById('clip-select');
-    if (!select) return;
-
-    select.innerHTML = '';
-    clipList.forEach((clip, i) => {
-      const opt = document.createElement('option');
-      opt.value = clip.key;
-      opt.textContent = `[${i + 1}] ${clip.label || clip.rawName} (${clip.duration.toFixed(2)}s)`;
-      if (clip.key === activeKey) opt.selected = true;
-      select.appendChild(opt);
-    });
-
-    const activeItem = clipList.find(c => c.key === activeKey) || clipList[0];
-    if (activeItem) {
-      this.updateActiveClipInfo(activeItem);
-    }
-  }
-
-  updateActiveClipInfo(item) {
-    const nameEl = document.getElementById('active-clip-name');
-    if (nameEl && item) {
-      nameEl.textContent = item.label || item.rawName || 'Combat Action';
-    }
-  }
-
-  updateModelSpecs(stats) {
-    if (!stats) return;
-    const set = (id, val) => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = val;
+  getTimeoutDraft() {
+    const schemaVersion = Number(this._el('tactic-schema')?.value || 1);
+    const rawSequence = this._el('tactic-sequence')?.value.split(',').map(value => value.trim()).filter(Boolean) || [];
+    const sequence = schemaVersion === 2 ? rawSequence.map(token => {
+      const [type, value] = token.split(':').map(part => part.trim());
+      if (type === 'counter') return { type: 'counter', response: value || 'strike', targetZone: 'any' };
+      if (type === 'move') return { type: 'move', direction: value || 'hold' };
+      if (type === 'wait_for') return { type: 'wait_for', signal: value || 'enemy_attack' };
+      if (type === 'set_priority') return { type: 'set_priority', channel: value || 'aggression', value: 0.25 };
+      return { type: 'action', actionId: value || type };
+    }) : rawSequence;
+    return {
+      id: this._el('tactic-select')?.value || undefined,
+      schemaVersion,
+      name: this._el('tactic-name')?.value.trim() || '',
+      goal: this._el('tactic-goal')?.value.trim() || '',
+      priority: Number(this._el('tactic-priority')?.value || .7),
+      triggerAction: this._el('tactic-trigger-action')?.value || 'hook_right',
+      sequence,
+      repeatLimit: Number(this._el('tactic-repeat')?.value || 1),
+      timeoutTicks: Number(this._el('tactic-timeout')?.value || 180),
+      abortNearEdge: Boolean(this._el('tactic-abort-edge')?.checked),
     };
-    set('spec-triangles', Number(stats.triangles || 0).toLocaleString());
-    set('spec-vertices', Number(stats.vertices || 0).toLocaleString());
-    set('spec-bones', stats.bonesCount || '--');
-    set('spec-meshes', stats.meshes || '--');
-    set('spec-materials', `${stats.materialsCount || 0}`);
   }
 
-  update(fighterState, currentFps) {
-    if (!fighterState) return;
-    const { currentTime, duration, frameIndex, totalFrames } = fighterState;
+  openTimeoutEditor(tactics = [], selectedId = null) {
+    const editor = this._el('timeout-editor');
+    if (!editor) return;
+    editor.hidden = false;
+    const list = Array.isArray(tactics) ? tactics : tactics ? [tactics] : [];
+    const selected = list.find(tactic => tactic.id === selectedId) || list[0] || null;
+    const selector = this._el('tactic-select');
+    selector.replaceChildren();
+    list.forEach(tactic => {
+      const option = document.createElement('option'); option.value = tactic.id; option.textContent = tactic.name || tactic.id; selector.appendChild(option);
+    });
+    if (selected) selector.value = selected.id;
+    const schemaVersion = selected?.schemaVersion || 1;
+    this._el('tactic-schema').value = String(schemaVersion);
+    const value = selected?.phases?.[0]?.sequence?.map(step => step.actionId || `${step.intent?.type}:${step.intent?.direction || step.intent?.response || step.intent?.signal || step.intent?.actionId || ''}`).join(', ') || (schemaVersion === 2 ? 'counter:strike, move:out' : 'slip_left, body_cross');
+    this._el('tactic-name').value = selected?.name || 'Right Hook Punish';
+    this._el('tactic-goal').value = selected?.goal || '';
+    this._el('tactic-priority').value = String(selected?.priority ?? .7);
+    this._el('tactic-trigger-action').value = selected?.trigger?.actionId || 'hook_right';
+    this._el('tactic-sequence').value = value;
+    this._el('tactic-repeat').value = String(selected?.repeatLimit || 1);
+    this._el('tactic-timeout').value = String(selected?.timeoutTicks || 180);
+    this._el('tactic-abort-edge').checked = Boolean(selected?.abort?.some(condition => condition.type === 'near_edge')) || !selected;
+    this._el('timeout-review-state').textContent = 'DRAFT — NOT COMMITTED';
+    this._el('timeout-diff').textContent = 'Edit the bounded playbook and preview the complete diff before commit.';
+    this._el('tactic-prompt').value = '';
+    this._el('timeout-commit').disabled = true;
+  }
 
-    // Time text
-    const timerEl = document.getElementById('active-clip-time');
-    if (timerEl && duration > 0) {
-      const curSec = currentTime.toFixed(2);
-      const durSec = duration.toFixed(2);
-      const curF = frameIndex !== undefined ? frameIndex : Math.floor(currentTime * 30);
-      const totF = totalFrames !== undefined ? totalFrames : Math.round(duration * 30);
-      timerEl.textContent = `${curSec}s / ${durSec}s  •  Frame ${curF} / ${totF}`;
+  closeTimeoutEditor() {
+    const editor = this._el('timeout-editor');
+    if (editor) editor.hidden = true;
+  }
+
+  showTimeoutReview({ ok, message, diff = '', canCommit = false }) {
+    this._el('timeout-review-state').textContent = ok ? 'REVIEW READY' : 'INVALID DRAFT';
+    this._el('timeout-diff').textContent = message || diff || 'No changes.';
+    this._el('timeout-commit').disabled = !canCommit;
+  }
+
+  showTimeoutProposal(tactics, message, selectedId = null) {
+    this.openTimeoutEditor(tactics, selectedId);
+    this.showTimeoutReview({ ok: true, message: `PROPOSAL ONLY · ${message}`, canCommit: true });
+  }
+
+  setVoiceState({ state, message }) {
+    const button = this._el('coach-mic');
+    if (!button) return;
+    button.textContent = state === 'listening' ? 'STOP MIC' : 'MIC OFF';
+    button.setAttribute('aria-pressed', String(state === 'listening'));
+    button.dataset.state = state;
+    if (message) this.setCoachFeedback(message);
+  }
+
+  setCoachFeedback(message, tone = '') {
+    const feedback = this._el('coach-feedback');
+    if (!feedback) return;
+    feedback.textContent = String(message).slice(0, 220);
+    feedback.dataset.tone = tone;
+  }
+
+  updateFightHUD(state) {
+    if (!state) return;
+    const { a, b, matchStatus, winnerId } = state;
+    const timeoutCount = this._el('timeout-count');
+    if (timeoutCount && state.timeout) timeoutCount.textContent = state.timeout.remaining;
+
+    const hpA = this._el('fight-hp-a');
+    const hpB = this._el('fight-hp-b');
+    const staA = this._el('fight-sta-a');
+    const staB = this._el('fight-sta-b');
+    const posA = this._el('fight-pos-a');
+    const posB = this._el('fight-pos-b');
+    const status = this._el('fight-status');
+
+    if (hpA) hpA.style.width = `${(a.health / a.maxHealth) * 100}%`;
+    if (hpB) hpB.style.width = `${(b.health / b.maxHealth) * 100}%`;
+    if (staA) staA.style.width = `${(a.stamina / a.maxStamina) * 100}%`;
+    if (staB) staB.style.width = `${(b.stamina / b.maxStamina) * 100}%`;
+    if (posA) {
+      const pctA = a.maxPosture ? (a.posture / a.maxPosture) * 100 : 100;
+      posA.style.width = `${pctA}%`;
+      posA.style.opacity = pctA < 40 ? '1' : '0.5';
+    }
+    if (posB) {
+      const pctB = b.maxPosture ? (b.posture / b.maxPosture) * 100 : 100;
+      posB.style.width = `${pctB}%`;
+      posB.style.opacity = pctB < 40 ? '1' : '0.5';
     }
 
-    // Scrubber update
-    if (!this.isScrubbing && duration > 0) {
-      const frac = Math.max(0, Math.min(1, currentTime / duration));
-      const slider = document.getElementById('timeline-slider');
-      const prog = document.getElementById('scrubber-progress');
-      if (slider) slider.value = Math.round(frac * 1000);
-      if (prog) prog.style.width = `${(frac * 100).toFixed(1)}%`;
+    const nameA = this._el('fight-name-a');
+    const nameB = this._el('fight-name-b');
+    if (nameA) nameA.textContent = `${a.definitionId.replace(/_/g, ' ').toUpperCase()} · ${a.health}HP`;
+    if (nameB) nameB.textContent = `${b.definitionId.replace(/_/g, ' ').toUpperCase()} · ${b.health}HP`;
+
+    if (status) {
+      if (matchStatus === 'ko') {
+        status.textContent = `KO — ${winnerId?.replace(/_/g, ' ').toUpperCase()} WINS`;
+        status.classList.add('fight-ko');
+      } else if (matchStatus === 'time') {
+        status.textContent = `TIME — ${winnerId?.replace(/_/g, ' ').toUpperCase()} WINS`;
+        status.classList.add('fight-ko');
+      } else if (matchStatus === 'draw') {
+        status.textContent = 'TIME — DRAW';
+        status.classList.add('fight-ko');
+      } else {
+        const seconds = state.roundSecondsRemaining ?? 0;
+        const minutes = Math.floor(seconds / 60).toString().padStart(2, '0');
+        const remainder = (seconds % 60).toString().padStart(2, '0');
+        status.textContent = `${minutes}:${remainder} · TICK ${state.tick}`;
+        status.classList.remove('fight-ko');
+      }
     }
 
-    // FPS badge
-    if (currentFps !== undefined) {
-      const fpsEl = document.getElementById('spec-fps');
-      if (fpsEl) fpsEl.textContent = `${Math.round(currentFps)} FPS`;
+    const result = this._el('fight-result');
+    const resultText = this._el('fight-result-text');
+    if (result) {
+      if (state.matchResult) {
+        const winner = state.matchResult.winnerId?.replace(/_/g, ' ').toUpperCase();
+        const reason = state.matchResult.reason === 'ko' ? 'KNOCKOUT' : state.matchResult.reason === 'time' ? 'DECISION' : 'DRAW';
+        if (resultText) resultText.textContent = winner ? `${reason} · ${winner}` : reason;
+        result.hidden = false;
+      } else {
+        result.hidden = true;
+      }
+    }
+
+    // Capacity meter for fighter A (the coached robot).
+    if (state.coaching) this._updateCapacityMeter(state.coaching);
+  }
+
+  /** @param {object} coaching - from FightMode.getCoachingSnapshot() */
+  _updateCapacityMeter(coaching) {
+    const meter = this._el('capacity-meter');
+    if (!meter) return;
+    const pb = coaching.playbooks?.[0];
+    if (!pb) return;
+    const brainSnap = coaching.brains?.[0];
+    const baseAdh = brainSnap?.baseAdherence !== undefined
+      ? `BASE ADH ${Math.round((brainSnap.baseAdherence ?? .8) * 100)}%`
+      : '';
+    const costText = pb.totalCost !== undefined && pb.capacity !== undefined
+      ? `CAPACITY ${pb.totalCost}/${pb.capacity} COST (${pb.tacticCount} TACTIC${pb.tacticCount === 1 ? '' : 'S'}, ${pb.remainingCapacity} REMAINING)`
+      : (pb.tacticCount > 0 ? `TACTICS ${pb.tacticCount}` : 'NO TACTICS');
+    const activeText = pb.activeCount > 0 ? ` · ACTIVE ${pb.activeCount}` : '';
+    const overText = pb.isOverCapacity ? ' · ⚠ OVER CAPACITY' : '';
+
+    meter.textContent = `${costText}${activeText} · ${baseAdh}${overText}`.trim();
+    meter.title = `Playbook rev ${pb.revision} · Cost: ${pb.totalCost ?? 0}/${pb.capacity ?? 5} · Tactics: ${pb.tacticCount} · ${baseAdh}`;
+    if (pb.isOverCapacity) meter.style.color = '#d33';
+    else meter.style.color = '';
+
+    // Show adherence miss feedback if the brain just had one.
+    const miss = brainSnap?.lastAdherenceMiss;
+    const feedbackEl = this._el('adherence-feedback');
+    if (feedbackEl) {
+      if (miss) {
+        const label = _adherenceLabel(miss.reason);
+        feedbackEl.textContent = `⚠ [ADHERENCE MISS] ${label} · ROLL ${miss.roll.toFixed(2)} VS REQUIRED ${miss.adherence.toFixed(2)}`;
+        feedbackEl.hidden = false;
+        clearTimeout(this._adherenceTimer);
+        this._adherenceTimer = setTimeout(() => { feedbackEl.hidden = true; }, 4000);
+      }
     }
   }
 
-  showToast(message, duration = 2000) {
-    const toast = document.getElementById('toast-notify');
-    const msg = document.getElementById('toast-message');
-    if (toast && msg) {
-      msg.textContent = message;
-      toast.classList.add('visible');
-      clearTimeout(this.toastTimer);
-      this.toastTimer = setTimeout(() => {
-        toast.classList.remove('visible');
-      }, duration);
-    }
+  // ── Toast ───────────────────────────────────────────────────────
+  showToast(text) {
+    const t = this._el('toast');
+    t.textContent = text;
+    t.classList.add('visible');
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => t.classList.remove('visible'), 1800);
   }
+}
 
-  showAnnouncement(title, sub, duration = 1500) {
-    this.showToast(`${title} — ${sub}`, duration);
-  }
+// ── module helpers ─────────────────────────────────────────────────────
+
+const ADHERENCE_LABELS = {
+  staggered:            'STAGGERED (REACTION UNSTABLE)',
+  exhausted:            'STAMINA DEPLETED',
+  low_stamina:          'LOW STAMINA FATIGUE',
+  tactic_too_complex:   'TACTIC TOO COMPLEX FOR CHASSIS',
+  overloaded:           'TACTICAL OVERLOAD (MULTIPLE ACTIVE)',
+  near_edge_disruption: 'RING-EDGE POSITION PRESSURE',
+  random_miss:          'EXECUTION IMPERFECTION',
+};
+
+function _adherenceLabel(reason) {
+  return ADHERENCE_LABELS[reason] ?? reason.toUpperCase().replace(/_/g, ' ');
 }

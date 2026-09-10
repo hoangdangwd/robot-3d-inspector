@@ -1,0 +1,49 @@
+{
+  "url": "https://robot-foundry-7m7.pages.dev/?qa=1",
+  "mode": "desktop",
+  "state": "active-play",
+  "requestedState": "active-play",
+  "appliedState": "active-play",
+  "runId": "qa-production-desktop",
+  "seed": 9001,
+  "screenshotPath": "artifacts\\qa\\production-desktop\\desktop-active-play.png",
+  "gpu": {
+    "renderer": "ANGLE (Intel, Intel(R) UHD Graphics (0x00009A68) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "vendor": "Google Inc. (Intel)",
+    "softwareRendered": false
+  },
+  "result": {
+    "ok": true,
+    "reason": "nonblank",
+    "rect": {
+      "x": 52.1875,
+      "y": 73,
+      "width": 1175.625,
+      "height": 680
+    },
+    "drawingBuffer": {
+      "width": 1176,
+      "height": 680
+    },
+    "alphaPixels": 4101,
+    "variance": 228,
+    "colorBuckets": 92,
+    "metrics": {
+      "colorBuckets": 149,
+      "colorEntropyBits": 2.71,
+      "edgeDensity": 0.139,
+      "luminance": {
+        "mean": 228.1,
+        "p5": 203.7,
+        "p95": 248.9,
+        "contrast": 45.1
+      },
+      "dominantColorShare": 0.462,
+      "nonBackgroundShare": 0.538
+    },
+    "renderBudget": null,
+    "diagnostics": null
+  },
+  "consoleErrors": [],
+  "pageErrors": []
+}

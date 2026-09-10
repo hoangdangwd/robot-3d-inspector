@@ -5,10 +5,40 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "validate:robots": "node scripts/validate-robots.mjs && node scripts/validate-animation-library.mjs",
+    "validate:phase0": "node scripts/validate-phase0.mjs",
+    "validate:phase1": "node scripts/validate-phase1.mjs",
+    "validate:phase2": "node scripts/validate-phase2.mjs",
+    "validate:phase3": "node scripts/validate-phase3.mjs",
+    "validate:ai-balance": "node scripts/validate-ai-balance.mjs",
+    "validate:phase4": "node scripts/validate-phase4.mjs",
+    "validate:coach-worker": "node scripts/validate-coach-worker.mjs",
+    "validate:phase5": "node scripts/validate-phase5.mjs",
+    "validate:phase6": "node scripts/validate-phase6.mjs",
+    "validate:phase7": "node scripts/validate-phase7.mjs",
+    "validate:phase8": "node scripts/validate-phase8.mjs",
+    "validate:phase9": "node scripts/validate-phase9.mjs",
+    "worker:dev": "wrangler dev",
+    "worker:deploy": "wrangler deploy",
+    "validate": "node scripts/validate-robots.mjs && node scripts/validate-animation-library.mjs && node scripts/validate-phase0.mjs && node scripts/validate-phase1.mjs && node scripts/validate-phase2.mjs && node scripts/validate-phase3.mjs && node scripts/validate-ai-balance.mjs && node scripts/validate-phase4.mjs && node scripts/validate-coach-worker.mjs && node scripts/validate-phase5.mjs && node scripts/validate-phase6.mjs && node scripts/validate-phase7.mjs && node scripts/validate-phase8.mjs",
+    "test:browser": "node scripts/browser-smoke.mjs",
+    "test:browser:fight": "node scripts/fight-mode-smoke.mjs",
+    "test:browser:touch": "node scripts/touch-smoke.mjs",
+    "test:browser:performance": "node scripts/performance-smoke.mjs",
+    "test:browser:visual": "node scripts/visual-qa.mjs",
+    "test:acceptance": "node scripts/acceptance-browser.mjs",
+    "security:smoke": "node scripts/security-release-smoke.mjs",
+    "test:worker:production": "node scripts/worker-production-smoke.mjs",
+    "test:worker:canary": "node scripts/worker-ai-canary.mjs",
+    "test:phase9": "pnpm validate:phase9 && pnpm validate && pnpm security:smoke && pnpm test:worker:production && pnpm test:acceptance && pnpm test:browser:visual",
+    "release:check": "pnpm build && pnpm test:phase9"
   },
   "devDependencies": {
-    "vite": "^8.2.2"
+    "@playwright/test": "^1.63.0",
+    "pngjs": "^7.0.0",
+    "vite": "^8.2.2",
+    "wrangler": "^4.129.1"
   },
   "dependencies": {
     "three": "^0.185.1"

@@ -1,0 +1,19 @@
+{
+    "$schema": "./node_modules/wrangler/config-schema.json",
+    "name": "robot-foundry-coach",
+    "main": "worker/coach-api.js",
+    "compatibility_date": "2026-09-09",
+    "compatibility_flags": ["nodejs_compat"],
+    "ai": {
+        "binding": "AI",
+        "remote": true,
+    },
+    "vars": {
+        "ALLOWED_ORIGIN": "https://robot-foundry-7m7.pages.dev",
+        "AI_MODEL": "@cf/meta/llama-3.2-3b-instruct",
+    },
+    "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+    },
+}

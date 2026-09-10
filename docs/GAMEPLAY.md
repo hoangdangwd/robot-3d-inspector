@@ -1,5 +1,15 @@
 # GAMEPLAY
 
+## Ruleset v1 — Match lifecycle
+
+- A match uses one timed round of 180 seconds.
+- A fighter wins immediately by KO when the opponent reaches zero health.
+- If the timer expires, the fighter with higher remaining health wins by decision.
+- Equal remaining health at the timer produces a draw.
+- The three tactical Time-outs are scoped to the whole match and are not refilled by the timer result.
+- Reset/retry starts a new match and restores health, posture, stamina, tactics runtime and Time-out allowance.
+- Replay is a local deterministic record of validated simulation inputs/events; it never calls a model or network provider.
+
 ## 1. Game Fantasy
 
 Đây là một game đấu robot lấy cảm hứng từ **Real Steel**, nhưng fantasy cốt lõi không phải là điều khiển robot như một fighting game truyền thống.
