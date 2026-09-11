@@ -8,6 +8,7 @@ import { SimClock } from './SimClock.js';
 import { EventLog } from './EventLog.js';
 import { getAction, applyCapability } from './ActionRegistry.js';
 import * as R from './CombatRules.js';
+import { resolveDefenseOutcome } from './AttackDefenseMatrix.js';
 
 export class CombatSimulation {
   /**
@@ -352,7 +353,7 @@ export class CombatSimulation {
   _resolveContacts(tick) {
     for (const [attackerId, attacker] of this.fighters) {
       const baseDef = getAction(attacker.actionId);
-      if (!baseDef || baseDef.family !== 'attack') continue;
+      if (!baseDef || baseDef.family !== 'attack' || baseDef.active === 0) continue;
       if (attacker.actionPhase !== ActionPhase.ACTIVE) continue;
 
       const target = this.fighters.get(attacker.targetId);
@@ -393,47 +394,37 @@ export class CombatSimulation {
 
       this._hitDedup.add(dedupKey);
 
-      // Target defense check
-      const tDef = getAction(target.actionId);
+      // Coverage is semantic, but a defense must also face the incoming opponent.
+      let defenseFacing = Math.atan2(-dx, -dz) - target.facing;
+      defenseFacing = Math.atan2(Math.sin(defenseFacing), Math.cos(defenseFacing));
+      const defenseEligible = target.status === FighterStatus.ACTING &&
+        target.actionPhase === ActionPhase.ACTIVE && Math.abs(defenseFacing) <= R.FACING_HALF;
+      const defenseOutcome = resolveDefenseOutcome(baseDef.id, target.actionId, defenseEligible);
+      const defenseData = { defenseId: target.actionId, defenseOutcome };
 
-      // Dodge (slip, duck, roll) — active phase avoids all attacks
-      if (tDef && tDef.isDodge && target.actionPhase === ActionPhase.ACTIVE) {
+      if (defenseOutcome === 'evade') {
         this._emit(tick, attackerId, 'contact_resolved', {
           result: 'missed', targetId: attacker.targetId,
-          actionId: baseDef.id, reason: 'dodged',
+          actionId: baseDef.id, reason: 'dodged', ...defenseData,
         });
         continue;
       }
 
       // Parry — active phase: negates hit AND stuns attacker
-      if (tDef && tDef.isParry && target.actionPhase === ActionPhase.ACTIVE) {
+      if (defenseOutcome === 'parry') {
         this._stunTicksRemaining.set(attackerId, R.PARRY_STUN_TICKS);
         this._emit(tick, attackerId, 'contact_resolved', {
           result: 'parried', targetId: attacker.targetId,
-          actionId: baseDef.id, stunTicks: R.PARRY_STUN_TICKS,
+          actionId: baseDef.id, stunTicks: R.PARRY_STUN_TICKS, ...defenseData,
         });
         continue;
       }
 
-      // Guard (high or low)
-      const guarding = tDef && tDef.isHold && !tDef.isDodge && !tDef.isParry
-                        && target.actionPhase === ActionPhase.ACTIVE;
-
-      if (guarding) {
-        // Guard type vs attack type matching
-        // guard_high blocks head attacks; guard_low blocks body attacks
-        // Mismatched guard: half chip reduction only
-        const isBodyAttack = baseDef.isBodyAttack;
-        const isLowGuard = target.actionId === 'guard_low';
-        const matched = (isBodyAttack && isLowGuard) || (!isBodyAttack && !isLowGuard);
-
+      // Wrong-zone guard is a clean hit, not a weaker universal block.
+      if (defenseOutcome === 'block') {
         const tCap = this._caps.get(attacker.targetId);
-        const guardChip = matched
-          ? Math.max(1, Math.round(def.chipDamage / (tCap.guardMult || 1)))
-          : Math.max(1, Math.round(def.chipDamage * 1.5));
-        const guardStaDrain = matched
-          ? Math.round(def.guardStaminaDrain / (tCap.guardMult || 1))
-          : Math.round(def.guardStaminaDrain * 1.3);
+        const guardChip = Math.max(1, Math.round(def.chipDamage / (tCap.guardMult || 1)));
+        const guardStaDrain = Math.round(def.guardStaminaDrain / (tCap.guardMult || 1));
 
         target.health = Math.max(0, target.health - guardChip);
         target.stamina = Math.max(0, target.stamina - guardStaDrain);
@@ -441,7 +432,7 @@ export class CombatSimulation {
         this._emit(tick, attackerId, 'contact_resolved', {
           result: 'blocked', targetId: attacker.targetId,
           actionId: baseDef.id, damage: guardChip,
-          matched,
+          matched: true, ...defenseData,
         });
 
         // Guard break: stamina exhausted by a hit while guarding.
@@ -460,7 +451,7 @@ export class CombatSimulation {
       target.posture = Math.max(0, target.posture - postureDmg);
       this._emit(tick, attackerId, 'contact_resolved', {
         result: 'hit', targetId: attacker.targetId,
-        actionId: baseDef.id, damage: def.damage, postureDamage: postureDmg,
+        actionId: baseDef.id, damage: def.damage, postureDamage: postureDmg, ...defenseData,
       });
       // Posture broken: goes DOWN (only if still alive).
       if (target.posture <= 0 && target.health > R.KO_HEALTH) {

@@ -3,8 +3,8 @@ import { spawn, spawnSync } from 'node:child_process';
 
 const port = process.env.ACCEPTANCE_PORT || '5235';
 const url = `http://127.0.0.1:${port}`;
-const previewCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
-const preview = spawn(previewCommand, ['preview', '--port', port], { stdio: 'ignore', shell: process.platform === 'win32', windowsHide: true });
+const previewCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const preview = spawn(previewCommand, ['run', 'preview', '--', '--port', port], { stdio: 'ignore', shell: process.platform === 'win32', windowsHide: true });
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function run(script) {

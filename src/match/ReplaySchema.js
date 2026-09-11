@@ -7,7 +7,8 @@ import { ActionPhase, FighterStatus, createActionIntent } from '../combat/Combat
 import * as R from '../combat/CombatRules.js';
 import { ROBOT_CATALOG } from '../robots/robotCatalog.js';
 
-export const REPLAY_LOG_VERSION = 1;
+// v2 changes authoritative attack-defense coverage; v1 cannot be replayed faithfully.
+export const REPLAY_LOG_VERSION = 2;
 export const REPLAY_LIMITS = Object.freeze({
   maxInputs: 50000,
   maxMeta: 10000,

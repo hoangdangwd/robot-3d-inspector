@@ -14,11 +14,11 @@ Each fighter has a bevelled, layered hard-surface body, distinct proportions/pal
 
 ## Run locally
 
-Use pnpm with a Node.js version supported by Vite 8.
+Use npm with a Node.js version supported by Vite 8. Commit `package-lock.json`; use `npm ci` for subsequent reproducible installs.
 
 ```bash
-pnpm install
-pnpm dev
+npm install
+npm run dev
 ```
 
 Open the Vite URL, normally `http://localhost:5173`.
@@ -38,9 +38,9 @@ Open the Vite URL, normally `http://localhost:5173`.
 ## Validation and production build
 
 ```bash
-pnpm validate
-pnpm build
-pnpm preview
+npm run validate
+npm run build
+npm run preview
 ```
 
 ## Live coaching and Cloudflare Worker fallback
@@ -52,24 +52,36 @@ Unknown short phrases can optionally use the Cloudflare Worker fallback at `/api
 Local frontend + Worker development uses two terminals:
 
 ```bash
-pnpm worker:dev                 # http://127.0.0.1:8787
-pnpm dev                        # Vite proxies /api to the Worker
+npm run worker:dev              # http://127.0.0.1:8787
+npm run dev                     # Vite proxies /api to the Worker
 ```
 
-Deploy only after `pnpm wrangler login` and configuring the production `ALLOWED_ORIGIN` variable:
+Deploy only after `npm exec -- wrangler login` and configuring the production `ALLOWED_ORIGIN` variable:
 
 ```bash
-pnpm exec wrangler deploy --dry-run
-pnpm worker:deploy
+npm exec -- wrangler deploy --dry-run
+npm run worker:deploy
 ```
 
 Do not put model keys in the browser. The current Workers AI binding does not require a browser secret. See `wrangler.jsonc` and `worker/coach-api.js`.
 
 `validate:robots` checks five unique fighters, 15 rigid pivots each, authored heights, 200 complete clips, semantic coverage, distinct pose variants/signatures, single rotation ownership, ground contact, down/get-up endpoints, and pause/seek/frame-step behavior. It fails on bones, skinned meshes, non-finite tracks, or animation scale channels.
 
-For browser smoke tests, start Vite on port 5188 and run `pnpm test:browser`. This uses a temporary isolated Edge profile and CDP, with no extra test dependencies. Set `EDGE_PATH` for a different Chromium executable and `SHOWCASE_URL` for another server. Results and screenshots go to `artifacts/animation-library/`.
+For browser smoke tests, start Vite with `npm run dev -- --port 5188` and run `npm run test:browser`. This uses a temporary isolated Edge profile and CDP, with no extra test dependencies. Set `EDGE_PATH` for a different Chromium executable and `SHOWCASE_URL` for another server. Results and screenshots go to `artifacts/animation-library/`.
 
 Stats are design comparisons (0–100), not authoritative damage or simulation results. Combat, autonomous AI, local coaching, bounded tactical playbooks, Time-outs, match lifecycle, local replay persistence and History are implemented for the current vertical slice. Strategy-level tactical schema v2, bounded intent resolution and multi-tactic Time-out editing are implemented for the current slice. Visual branch-graph authoring, selectable Fight Mode matchups and physical-device release sign-off remain future work. See `docs/GAMEPLAY.md`.
+
+## Volt pattern / animator review
+
+- [Robot patterns and animator storyboard](docs/ROBOT_PATTERNS.md).
+- `/?qa&pattern=volt`: deterministic jab→cross review; five responses, pause/step/slow playback. Does not save tactics or match history.
+- `/?qa&opponent=volt`: ordinary autonomous Forge vs Volt match, with normal coaching/playbooks.
+- `npm run validate:robot-patterns`; with dev server running, `npm run test:browser:patterns`.
+- Only Volt has a new built-in pattern in this slice. Existing clips still need phase-sync and paired visual sign-off.
+
+## Combat and animation team reference
+
+See [Attack–Defense Matrix v2](docs/ATTACK_DEFENSE_MATRIX.md) for the 80-cell combat table, animation briefs, timing sheet and review checklist. Run `npm run validate:attack-defense` to check coverage and contact gates. Replay logs now use v2; v1 logs are incompatible with the changed contact rules. Existing animation clips still need phase-synchronized playback and paired visual review against this contract.
 
 ## Main structure
 

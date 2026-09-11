@@ -33,15 +33,15 @@ Important consequences:
 
 ## 3. Project mission and fixed technology constraints
 
-Build a browser-based 3D robot fighting game with **Three.js** and **pnpm**.
+Build a browser-based 3D robot fighting game with **Three.js** and **npm**.
 
 The product may evoke the fantasy of robot-boxing fiction, but use original robots, names, visuals, arenas, UI, audio, lore, animation, and branding. Do not copy protected characters or assets.
 
 Technology rules:
 
 - Use **Three.js** for 3D rendering.
-- Use **pnpm** for package management.
-- Do not switch to npm, yarn, or bun for project dependency management.
+- Use **npm** for package management, per the user's explicit preference for this repository.
+- Do not switch to pnpm, yarn, or bun for project dependency management.
 - Preserve the existing framework, build tool, TypeScript/JavaScript choice, folder conventions, and architecture unless a requested change or concrete engineering benefit justifies changing them.
 - Do not migrate to React, React Three Fiber, ECS, another renderer, or another engine merely because it is familiar.
 - Prefer the smallest reasonable dependency set.
@@ -55,7 +55,7 @@ Technology rules:
 Before implementing or changing gameplay behavior:
 
 1. Read `docs/GAMEPLAY.md`.
-2. Inspect `package.json` and `pnpm-lock.yaml`.
+2. Inspect `package.json` and `package-lock.json`.
 3. Inspect the relevant entry points and nearby `src` code.
 4. Read relevant README/config/documentation files.
 5. Search for existing systems/utilities before creating replacements.
@@ -435,15 +435,15 @@ Ask for human input only when the choice is genuinely product-defining, destruct
 
 Inspect `package.json` first. Never invent scripts.
 
-Use **pnpm only**.
+Use **npm only**.
 
 Typical commands may include:
 
 ```bash
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
+npm run lint
+npm run typecheck
+npm test
+npm run build
 ```
 
 Run only scripts that actually exist.
@@ -468,7 +468,7 @@ A successful build is not sufficient for a gameplay change that can reasonably b
 - Keep mutable shared state narrow and intentional.
 - Comment _why_, not obvious syntax.
 - Avoid unrelated mass formatting.
-- Do not edit `pnpm-lock.yaml` unless dependencies actually changed.
+- Keep `package-lock.json` tracked and synchronized with `package.json`; prefer `npm ci` for reproducible installs.
 - Do not fabricate files, APIs, package versions, scripts, or runtime behavior.
 
 ---

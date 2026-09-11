@@ -320,7 +320,7 @@ console.log('\n── Parry stuns attacker ──');
   sim.fighterA.z = -0.5; sim.fighterB.z = 0.5;
   sim.fighterA.facing = 0; sim.fighterB.facing = Math.PI;
 
-  const parryDef = getAction('parry_left');
+  const parryDef = getAction('parry_right');
   const jabDef = getAction('jab');
 
   // A jabs first
@@ -329,7 +329,7 @@ console.log('\n── Parry stuns attacker ──');
   // A active at tick 9 (1+8)
   // B parry startup=3, start B at tick ~6 so B active at tick 6+3=9
   stepN(sim, 4); // tick 5
-  sim.submitIntentFor('fighter_b', intent('fighter_b', 'parry_left', sim.clock.tick));
+  sim.submitIntentFor('fighter_b', intent('fighter_b', 'parry_right', sim.clock.tick));
   step1(sim); // tick 6: B enters startup
   // B active at tick 9, lasts 6 ticks (9-14)
   // A active at tick 9, lasts 4 ticks (9-12) → overlap
@@ -402,13 +402,13 @@ console.log('\n── Guard_low blocks body attacks better ──');
 
   const highEv = simHigh.log.toArray().filter(e => e.type === 'contact_resolved');
   const highBlock = highEv[highEv.length - 1];
-  assert.equal(highBlock.data.result, 'blocked');
-  assert.ok(!highBlock.data.matched, 'guard_high mismatched body attack');
+  assert.equal(highBlock.data.result, 'hit');
+  assert.equal(highBlock.data.defenseOutcome, 'hit', 'guard_high exposes body');
   const mismatchedChip = bHighBefore - simHigh.fighterB.health;
 
   assert.ok(mismatchedChip > matchedChip,
     `mismatched chip (${mismatchedChip}) > matched chip (${matchedChip})`);
-  ok('mismatched guard takes more chip damage');
+  ok('mismatched guard takes a clean hit rather than chip damage');
 }
 
 // ═══════════════════════════════════════════════════════════════════

@@ -40,6 +40,20 @@ Không đợi Phase 8 mới có end/reset: match harness tối thiểu phải c�
 
 Fight Mode hiện có local autonomous CombatBrain, local coaching, bounded tactical playbooks, Time-out editor, match lifecycle, replay/history persistence and settings hydration. Voice dùng browser Web Speech API nếu khả dụng; text fallback luôn hoạt động. Cloudflare Worker/Workers AI fallback đã triển khai optional; production `pages.dev` origin đã được cấu hình.
 
+### Attack–Defense v2 / animation-team contract
+
+- Implemented: explicit 80-cell matrix, hand/zone/trajectory profiles, defense active/facing gates, wrong-zone clean hits, AI compatibility scoring, replay log v2.
+- Reference: [ATTACK_DEFENSE_MATRIX.md](ATTACK_DEFENSE_MATRIX.md); validation: `npm run validate:attack-defense` (80 pairs × six profiles + 252 legal timing fixtures).
+- Domain validation/build PASS. Full browser acceptance currently fails at suite-only mobile touch navigation despite isolated touch PASS; see `artifacts/qa/attack-defense-report.md`. Historical Phase 9 PASS above is not a new full-suite sign-off.
+- Follow-up: phase-synchronized presentation, paired animation review/re-authoring, balance/playtest, suite-only touch diagnosis. Matrix completion does not mean animation integration is complete.
+
+### Robot pattern slice 1 — Volt one-two
+
+- Implemented: Volt-only jab→cross built-in habit; bounded seeded selection, execution acknowledgements, abort/cooldown and player tactic/Direct Command/Blackboard precedence.
+- Animator reference: [ROBOT_PATTERNS.md](ROBOT_PATTERNS.md), `/?qa&pattern=volt` (5 repeatable review cases, pause/step/slow playback); ordinary matchup: `/?qa&opponent=volt`.
+- Domain pattern tests, full validate, phase9 domain, build, browser pattern review and Fight Mode smoke PASS. Full acceptance's previously recorded suite-only touch failure is not claimed fixed.
+- Remaining: phase-sync clips, human paired visual sign-off, actual Time-out correct/wrong coaching comparison, then expand to other four robots. Screenshots are captures, not approved baselines.
+
 ## 2. Decision backlog — cần người dùng chốt trước task phụ thuộc
 
 | ID | Quyết định | Đã chốt / chưa chốt | Block |
@@ -170,17 +184,19 @@ Tất cả invariants trong GAMEPLAY.md được trace tới implementation/test
 
 ## 9. Lệnh kiểm tra hiện có (đã tồn tại trong package.json)
 
+Repo hiện dùng npm theo yêu cầu cá nhân của người dùng. Các ghi nhận PASS dùng pnpm phía trên là bằng chứng lịch sử, không phải kết quả chạy lại với npm.
+
 ```bash
-pnpm validate:robots
-pnpm validate:phase4
-pnpm build
+npm run validate:robots
+npm run validate:phase4
+npm run build
 # Terminal 1: start server, sau đó terminal 2 chạy browser suite
-pnpm dev --port 5188
-pnpm test:browser
+npm run dev -- --port 5188
+npm run test:browser
 git diff --check
 ```
 
-Dùng `SHOWCASE_URL` nếu server chạy port khác. `test:browser` hiện kiểm tra showcase/animation, **chưa kiểm tra combat, AI, voice hay tactics**. Chưa có `pnpm test`, `pnpm lint`, `pnpm typecheck`; không ghi nhận chúng pass hoặc giả định đã tồn tại.
+Dùng `SHOWCASE_URL` nếu server chạy port khác. `test:browser` hiện kiểm tra showcase/animation, **chưa kiểm tra combat, AI, voice hay tactics**. Chưa có `npm test`, `npm run lint`, `npm run typecheck`; không ghi nhận chúng pass hoặc giả định đã tồn tại.
 
 ## 10. Risks / mitigation / deferred scope
 

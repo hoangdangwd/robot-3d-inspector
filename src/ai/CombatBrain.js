@@ -6,8 +6,11 @@ import { createActionIntent } from '../combat/CombatTypes.js';
 import { getAction, getAttackIds, getDefenseIds } from '../combat/ActionRegistry.js';
 import { SeededRNG } from '../combat/SeededRNG.js';
 import * as R from '../combat/CombatRules.js';
+import { resolveDefenseOutcome } from '../combat/AttackDefenseMatrix.js';
 import { getBehaviorProfile } from './robotBehaviorProfiles.js';
 import { CombatBlackboard } from './CombatBlackboard.js';
+import { getRobotPattern } from './RobotPatterns.js';
+import { RobotPatternRuntime } from './RobotPatternRuntime.js';
 import { TacticRuntime } from '../tactics/TacticRuntime.js';
 import { validatePlaybook } from '../tactics/TacticSchema.js';
 import { computeAdherence, rollAdherence, adherenceMissReason } from './AdherenceModel.js';
@@ -67,6 +70,9 @@ export class CombatBrain {
     /** Last adherence miss event, cleared each decide() call. */
     this.lastAdherenceMiss = null;
     this.strategySignals = Object.create(null);
+    const pattern = getRobotPattern(definitionId);
+    this.pattern = pattern ? new RobotPatternRuntime(pattern, fighterId, definitionId) : null;
+    this.patternRng = new SeededRNG(seed ^ 0x7017);
   }
 
   /**
@@ -115,6 +121,7 @@ export class CombatBrain {
     const { self, target } = view;
     view.blackboard = { ...this.blackboard.snapshot(tick), ...this.strategySignals };
     this.lastAdherenceMiss = null;  // reset each decide cycle
+    this.pattern?.update(simulation, view, tick);
 
     this._updateState(view);
     const movement = this._movement(view);
@@ -130,6 +137,7 @@ export class CombatBrain {
     }
 
     const tacticChoice = this._chooseTacticAction(view, tick);
+    if (tacticChoice) this.pattern?.abort(tick, 'playbook_priority');
     if (tacticChoice?.movement) {
       this.nextDecisionTick = tick + this.decisionInterval;
       return { intent: null, movement: { ...movement, ...tacticChoice.movement }, state: this.state, reason: tacticChoice.reason || 'tactic_movement' };
@@ -143,7 +151,12 @@ export class CombatBrain {
       this.nextDecisionTick = tick + this.decisionInterval;
       return { intent: null, movement, state: this.state, reason: 'tactic_waiting' };
     }
-    const choice = tacticChoice || this._chooseAction(view);
+    const patternChoice = tacticChoice ? null : this.pattern?.choose(view, tick, this.patternRng);
+    if (patternChoice?.blocked) {
+      this.nextDecisionTick = tick + this.decisionInterval;
+      return { intent: null, movement, state: this.state, reason: patternChoice.reason };
+    }
+    const choice = tacticChoice || patternChoice || this._chooseAction(view);
     if (!choice) {
       this.nextDecisionTick = tick + this.decisionInterval;
       return { intent: null, movement, state: this.state, reason: 'no_scored_action' };
@@ -292,6 +305,8 @@ export class CombatBrain {
 
   reset() {
     this.rng = new SeededRNG(this.seed);
+    this.patternRng = new SeededRNG(this.seed ^ 0x7017);
+    this.pattern?.reset();
     this.nextDecisionTick = 0;
     this.commitUntil = 0;
     this.state = BRAIN_STATES.OBSERVE;
@@ -344,6 +359,8 @@ export class CombatBrain {
       // should not outrank movement toward preferred range, especially for a
       // long-range robot whose opponent is still far away.
       let score = baseWeight * affordable * (targetThreat ? 1.4 : .08);
+      // Prefer compatible responses without overriding explicit coach/tactic requests.
+      if (targetThreat && resolveDefenseOutcome(view.target.actionId, actionId) === 'hit') score *= .1;
       if (DODGES.has(actionId)) score *= .7 + p.evadeBias * .7;
       if (PARRIES.has(actionId)) score *= .55 + p.counterBias * .65;
       if (HEAD_GUARDS.has(actionId) && targetBodyThreat) score *= .55;
@@ -380,6 +397,7 @@ export class CombatBrain {
       decisionCount: this.decisionCount,
       lastDecision: this.lastDecision,
       lastAdherenceMiss: this.lastAdherenceMiss,
+      pattern: this.pattern?.snapshot() ?? null,
       baseAdherence: this.profile.adherence,
       tacticalCapacity: this.profile.tacticalCapacity,
       blackboard: { ...this.blackboard.snapshot(this.nextDecisionTick), ...this.strategySignals },

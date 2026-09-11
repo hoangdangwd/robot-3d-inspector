@@ -36,6 +36,14 @@ Character clips (6): idle, character defense, character light/heavy attack, sign
 
 Shared verbs are parameterized choreography, not forty hand-authored independent performances per fighter. Bespoke signatures remain separately authored.
 
+## Robot pattern review
+
+[ROBOT_PATTERNS.md](ROBOT_PATTERNS.md) mô tả Volt jab→cross, storyboard theo tick, 5 paired scenarios và checklist animator. Chạy app rồi mở `/?qa&pattern=volt` để Pause / +1 tick / 0.25× / Reset trực tiếp. Đây là simulation-backed review với clip hiện có, **chưa phase-sync hoặc human visual sign-off**.
+
+## Attack–defense authoring reference
+
+Team animation dùng [ATTACK_DEFENSE_MATRIX.md](ATTACK_DEFENSE_MATRIX.md) để tra đủ 80 cặp attack/defense, anatomical directions, tay/vùng đích/quỹ đạo, base timing và checklist paired review. Matrix đã nối vào simulation; thư viện procedural hiện tại **chưa được re-author/duyệt đầy đủ theo matrix v2**. Phase-synchronized playback và paired visual contact alignment còn là bước tích hợp tiếp theo, không được suy ra từ validation clip PASS.
+
 ## Animation boundary
 
 - Forward +Z; meters after RobotFactory height normalization; local joint Euler authoring converted to quaternions.

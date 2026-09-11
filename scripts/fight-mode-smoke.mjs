@@ -223,7 +223,7 @@ try {
   assert.ok(['time', 'draw', 'ko'].includes(timedResult.status), `match reaches terminal result (${JSON.stringify(timedResult)})`);
   assert.ok(timedResult.result, 'match result is populated');
   assert.equal(timedResult.overlayHidden, false, 'result overlay is visible');
-  assert.equal(timedResult.replay.version, 1, 'replay export is versioned');
+  assert.equal(timedResult.replay.version, 2, 'replay export uses attack-defense rules v2');
   assert.ok(timedResult.replay.events.length > 0, 'replay contains validated events');
   assert.ok(timedResult.savedResults >= 1, 'match result persists locally');
   assert.equal(await evaluate(`(() => { const result = JSON.parse(localStorage.getItem('robot-foundry.results.v1') || '[]')[0]; const replay = JSON.parse(localStorage.getItem('robot-foundry.replays.v1') || '[]')[0]; return replay?.matchId === result?.id; })()`), true, 'saved replay is associated with its match result');

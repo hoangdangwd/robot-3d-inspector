@@ -175,6 +175,10 @@ export class FightMode {
       const leased = this.commandQueue.lease(brain.fighterId, this.sim.currentTick);
       if (!leased.command) continue;
       const command = leased.command;
+      if (brain.pattern?.active) {
+        brain.pattern.abort(this.sim.currentTick, 'direct_command');
+        this.sim.recordReplayMeta('pattern_aborted', brain.pattern.lastEvent);
+      }
       const intent = createActionIntent({
         actionId: command.actionId,
         source: 'direct_command',
@@ -192,7 +196,11 @@ export class FightMode {
 
     for (const brain of this.brains) {
       if (commandIntentSubmitted.has(brain.fighterId)) continue;
+      const previousPatternEvent = brain.pattern?.lastEvent;
       const decision = brain.decide(this.sim);
+      if (brain.pattern?.lastEvent && brain.pattern.lastEvent !== previousPatternEvent) {
+        this.sim.recordReplayMeta(brain.pattern.lastEvent.type, brain.pattern.lastEvent);
+      }
       if (!decision) continue;
       this.sim.applyMovement(brain.fighterId, decision.movement);
       if (decision.intent) this.sim.submitIntentFor(brain.fighterId, decision.intent);

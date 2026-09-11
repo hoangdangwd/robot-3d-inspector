@@ -150,6 +150,12 @@ class RobotFoundryApp {
 
     this.animate();
     this._installQaHooks();
+    const reviewQuery = new URLSearchParams(window.location.search);
+    if (reviewQuery.has('qa') && reviewQuery.get('pattern') === 'volt') {
+      import('./ui/PatternReview.js').then(({ installPatternReview }) => installPatternReview(this));
+    } else if (reviewQuery.has('qa') && reviewQuery.get('opponent') === 'volt') {
+      this.enterFightMode({ defIdB: 'volt-kestrel' });
+    }
   }
 
   _installQaHooks() {
@@ -687,7 +693,7 @@ class RobotFoundryApp {
     }
   }
 
-  enterFightMode() {
+  enterFightMode({ defIdA = 'forge-titan', defIdB = 'aegis-prime', review = false } = {}) {
     this._lastSavedResultKey = '';
     this.mode = 'fight';
 
@@ -703,12 +709,12 @@ class RobotFoundryApp {
 
     // Create fight mode with two robots
     this.fightMode = new FightMode(this.scene, {
-      defIdA: 'forge-titan',
-      defIdB: 'aegis-prime',
+      defIdA,
+      defIdB,
       seed: this._testSeed,
       onStateChange: (state) => {
         this.hud.updateFightHUD(state);
-        if (state.matchResult) this._persistMatchResult(state);
+        if (!review && state.matchResult) this._persistMatchResult(state);
       },
     });
 
@@ -722,7 +728,7 @@ class RobotFoundryApp {
     this.camera.lookAt(0, 1.2, 0);
     this.cameraController.controls.update(0);
 
-    this.hud.showToast('FIGHT MODE — Forge Titan vs Aegis Prime');
+    this.hud.showToast(review ? 'ANIMATOR REVIEW — Volt vs Aegis · NOT A MATCH' : `FIGHT MODE — ${getRobotDefinition(defIdA).shortName} vs ${getRobotDefinition(defIdB).shortName}`);
   }
 
   resetFightMode() {

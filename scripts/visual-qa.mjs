@@ -3,9 +3,9 @@ import { mkdir } from 'node:fs/promises';
 
 const port = process.env.VISUAL_QA_PORT || '5241';
 const url = `http://127.0.0.1:${port}/?qa=1`;
-const previewCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+const previewCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const inspector = '.pi/skills/threejs-qa-release/scripts/inspect-threejs-canvas.mjs';
-const preview = spawn(previewCommand, ['preview', '--port', port], { stdio: 'ignore', shell: process.platform === 'win32', windowsHide: true });
+const preview = spawn(previewCommand, ['run', 'preview', '--', '--port', port], { stdio: 'ignore', shell: process.platform === 'win32', windowsHide: true });
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 try {

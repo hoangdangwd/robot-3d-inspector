@@ -121,7 +121,7 @@ console.log('\\n── Local persistence: replay export/import/retention ──'
   const storage = { getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value), removeItem: key => data.delete(key) };
   const persistence = new MatchPersistence({ storage });
   const sampleReplay = {
-    version: 1,
+    version: REPLAY_LOG_VERSION,
     defIdA: 'forge-titan',
     defIdB: 'aegis-prime',
     seed: 42,
@@ -136,6 +136,7 @@ console.log('\\n── Local persistence: replay export/import/retention ──'
     events: [],
   };
 
+  assert.throws(() => new MatchReplay({ ...sampleReplay, version: 1 }), /incompatible log version/);
   ok(persistence.saveReplay(sampleReplay, { matchId: 'm1' }).ok, 'saveReplay succeeds');
   ok(persistence.listReplays().length === 1, 'listReplays returns saved item');
   ok(persistence.listReplays()[0].matchId === 'm1', 'saved replay preserves matchId association');
@@ -145,12 +146,12 @@ console.log('\\n── Local persistence: replay export/import/retention ──'
   ok(jsonExport.ok && typeof jsonExport.value === 'string', 'exportReplay returns valid string');
 
   const imported = persistence.importReplay(jsonExport.value);
-  ok(imported.ok && imported.replay.version === 1, 'importReplay succeeds with exported string');
+  ok(imported.ok && imported.replay.version === REPLAY_LOG_VERSION, 'importReplay succeeds with exported string');
   ok(persistence.listReplays().length === 3, 'imported replay added to storage list');
 
   ok(persistence.importReplay('{malformed json').ok === false, 'importReplay rejects malformed JSON');
   ok(persistence.importReplay(JSON.stringify({ version: 99 })).ok === false, 'importReplay rejects incompatible version');
-  ok(persistence.importReplay(JSON.stringify({ version: 1 })).ok === false, 'importReplay rejects missing replay fields');
+  ok(persistence.importReplay(JSON.stringify({ version: REPLAY_LOG_VERSION })).ok === false, 'importReplay rejects missing replay fields');
   ok(persistence.importReplay(JSON.stringify({ ...sampleReplay, initialState: { fighter_a: { health: 'oops' }, fighter_b: sampleReplay.initialState.fighter_b } })).ok === false, 'importReplay rejects malformed initial state');
   ok(persistence.importReplay(JSON.stringify({ ...sampleReplay, inputs: 'not-an-array' })).ok === false, 'importReplay rejects malformed input stream');
   ok(persistence.listReplays().some(entry => entry.matchId === null), 'imported replay remains explicitly unassociated');

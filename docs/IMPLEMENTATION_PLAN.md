@@ -88,7 +88,7 @@ Các invariant không được phá:
 
 ## 3.1. Các module đề xuất
 
-Đây là **sơ đồ trách nhiệm đề xuất**, không phải file/API đã tồn tại hay yêu cầu tạo đủ ngay. Repo hiện dùng JavaScript ES modules + Three.js + Vite + pnpm. Ưu tiên JSDoc ở boundary; không migrate TypeScript/ECS/framework chỉ để làm roadmap. `src/combat/Fighter.js` hiện là presentation wrapper, không phải simulation entity.
+Đây là **sơ đồ trách nhiệm đề xuất**, không phải file/API đã tồn tại hay yêu cầu tạo đủ ngay. Repo hiện dùng JavaScript ES modules + Three.js + Vite + npm. Ưu tiên JSDoc ở boundary; không migrate TypeScript/ECS/framework chỉ để làm roadmap. `src/combat/Fighter.js` hiện là presentation wrapper, không phải simulation entity.
 
 ```text
 src/
@@ -225,7 +225,7 @@ Một task chỉ Done khi phù hợp:
 - Không phá Live Fight/Time-out boundary.
 - Data model được validate ở boundary.
 - Unit/integration test liên quan pass.
-- `pnpm build` pass.
+- `npm run build` pass.
 - Browser smoke phù hợp pass.
 - Không có console error mới.
 - Không có secret hoặc arbitrary code execution.
@@ -831,7 +831,7 @@ The remaining release blockers are physical Android/iOS testing, Safari/Firefox 
 
 ### Release DoD
 
-- `pnpm validate:robots` pass.
+- `npm run validate:robots` pass.
 - All combat unit/integration tests pass.
 - Browser smoke pass with 0 new console/runtime errors.
 - Production build pass.

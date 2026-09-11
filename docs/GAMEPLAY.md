@@ -10,6 +10,24 @@
 - Reset/retry starts a new match and restores health, posture, stamina, tactics runtime and Time-out allowance.
 - Replay is a local deterministic record of validated simulation inputs/events; it never calls a model or network provider.
 
+## Combat interaction rules v2 — attack/defense
+
+Ma trận boxing hiện tại và contract animation được mô tả tại [ATTACK_DEFENSE_MATRIX.md](ATTACK_DEFENSE_MATRIX.md). Các luật product cố định cho phiên bản này:
+
+- Left/right là bên giải phẫu của robot thực hiện action; tất cả robot hiện dùng left-lead stance.
+- High guard chỉ che head; low guard chỉ che body. Guard sai vùng chịu clean hit, không được universal chip reduction.
+- High straight jab trái có thể bị parry bằng tay phải defender; cross phải bằng tay trái. Parry này không che hook, uppercut, overhand hoặc body shot.
+- Slip trái/phải né head straight và uppercut; duck né head straight/hook; roll chuyên né head hook. Các defense này không tránh body shot. Overhand phải có thể né bằng slip trái, không phải slip phải/duck/roll.
+- Defense chỉ có hiệu lực trong active window và khi quay về attacker; range/facing/action legality của simulation vẫn có quyền cao hơn matrix. Feint không có contact/damage/parry stun.
+- Ma trận là luật boxing cách điệu có chủ đích, không cam kết mô phỏng đầy đủ boxing thực tế. Cùng một action giữ nguyên coverage giữa các robot; personality/capability thay đổi cách lựa chọn/thực hiện, không đổi nghĩa ID.
+- Thay đổi luật contact dùng replay log v2; replay v1 không được âm thầm phát theo luật mới. Playbook cũ không tự bị rewrite vì đổi coverage.
+
+## Built-in robot patterns — đợt 1
+
+Volt Kestrel có thói quen **jab trái → cross phải**, không cancel recovery và không đảm bảo nối đòn. Pattern chỉ bắt đầu khi có cơ hội, đủ tầm/hướng/stamina, có xác suất chọn và cooldown; có thể hủy khi điều kiện thay đổi. Đây là base personality, không tự thêm/sửa playbook. Direct Command, player tactic và Blackboard vẫn giữ quyền ưu tiên theo thiết kế; simulation vẫn quyết định legality/contact. Các robot khác chưa có pattern mới trong đợt này.
+
+Xem [ROBOT_PATTERNS.md](ROBOT_PATTERNS.md) để tra tuning, storyboard, QA scene và checklist cho animator. Fixture kiểm tra đúng/sai parry không phải bằng chứng một coaching loop hoàn chỉnh hoặc animation đã được duyệt.
+
 ## 1. Game Fantasy
 
 Đây là một game đấu robot lấy cảm hứng từ **Real Steel**, nhưng fantasy cốt lõi không phải là điều khiển robot như một fighting game truyền thống.

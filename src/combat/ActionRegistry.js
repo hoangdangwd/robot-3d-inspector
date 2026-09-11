@@ -4,6 +4,7 @@
 
 import { ActionFamily } from './CombatTypes.js';
 import * as R from './CombatRules.js';
+import { ATTACK_PROFILES } from './AttackDefenseMatrix.js';
 
 /**
  * @typedef {object} ActionDef
@@ -20,7 +21,7 @@ import * as R from './CombatRules.js';
  * @property {number}  facingHalf  - radians
  * @property {string}  animationId - semantic clip ID
  * @property {boolean} isHold
- * @property {boolean} isDodge     - true for slip/duck/roll (avoids attacks)
+ * @property {boolean} isDodge     - slip/duck/roll family; coverage is defined by AttackDefenseMatrix
  * @property {boolean} isParry     - true for parry (stuns attacker)
  * @property {boolean} isBodyAttack
  * @property {number}  drainPerSec - guard hold stamina drain
@@ -45,7 +46,8 @@ for (const [id, vals] of Object.entries(R.ACTIONS)) {
     reach, facingHalf: R.FACING_HALF,
     animationId: id,
     isHold: false, isDodge: false, isParry: false,
-    isBodyAttack: id.startsWith('body_'),
+    isBodyAttack: ATTACK_PROFILES[id].targetZone === 'body',
+    contactProfile: ATTACK_PROFILES[id],
     drainPerSec: 0,
   });
 }
