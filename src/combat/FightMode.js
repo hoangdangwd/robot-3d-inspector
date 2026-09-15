@@ -14,7 +14,7 @@ import { SeededRNG } from './SeededRNG.js';
 import { Fighter } from './Fighter.js';
 import { RobotFactory } from '../robots/RobotFactory.js';
 import { getRobotDefinition } from '../robots/robotCatalog.js';
-import { getAction, getActionIds } from './ActionRegistry.js';
+import { getAction, getActionIds, applyCapability } from './ActionRegistry.js';
 import * as R from './CombatRules.js';
 import { MatchReplay } from '../match/MatchReplay.js';
 
@@ -39,12 +39,12 @@ const BODY_HIT_ANIM = 'hit_body';
  */
 function createPlayerMarker(definition) {
   const markerGroup = new THREE.Group();
-  markerGroup.name = 'player-ground-indicator';
-  markerGroup.position.y = 0.015;
+  markerGroup.name = 'player-identity-marker';
 
   const accentColor = definition.colors?.accent ?? 0x2d8cff;
+  const accentHex = '#' + accentColor.toString(16).padStart(6, '0');
 
-  // Outer circular ring on XZ plane
+  // 1. Ground indicator: outer circular ring on XZ plane
   const ringGeo = new THREE.RingGeometry(0.72, 0.86, 40);
   ringGeo.rotateX(-Math.PI / 2);
 
@@ -56,14 +56,15 @@ function createPlayerMarker(definition) {
     depthWrite: false,
   });
   const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+  ringMesh.position.y = 0.015;
   markerGroup.add(ringMesh);
 
   // Directional chevron/pointer on XZ plane pointing along forward facing (+Z)
   const pointerGeo = new THREE.BufferGeometry();
   const vertices = new Float32Array([
-    0, 0, 1.06,
-    -0.15, 0, 0.86,
-    0.15, 0, 0.86,
+    0, 0.015, 1.06,
+    -0.15, 0.015, 0.86,
+    0.15, 0.015, 0.86,
   ]);
   pointerGeo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
   pointerGeo.computeVertexNormals();
@@ -71,7 +72,80 @@ function createPlayerMarker(definition) {
   const pointerMesh = new THREE.Mesh(pointerGeo, ringMat);
   markerGroup.add(pointerMesh);
 
-  return { group: markerGroup, material: ringMat };
+  // 2. Overhead Floating Indicator [YOU] above robot head
+  const baseOverheadY = (definition.height || 2.3) + 0.38;
+  let overheadMesh = null;
+  let overheadMat = null;
+  let overheadTexture = null;
+
+  if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      // Rounded pill container with accent glow border
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+      ctx.strokeStyle = accentHex;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      if (typeof ctx.roundRect === 'function') {
+        ctx.roundRect(8, 6, 112, 36, 10);
+      } else {
+        ctx.rect(8, 6, 112, 36);
+      }
+      ctx.fill();
+      ctx.stroke();
+
+      // Downward pointer tip pointing to the robot head
+      ctx.fillStyle = accentHex;
+      ctx.beginPath();
+      ctx.moveTo(56, 42);
+      ctx.lineTo(72, 42);
+      ctx.lineTo(64, 56);
+      ctx.closePath();
+      ctx.fill();
+
+      // Bold text label "YOU"
+      ctx.font = 'bold 22px "Chakra Petch", system-ui, -apple-system, sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('YOU', 64, 24);
+
+      overheadTexture = new THREE.CanvasTexture(canvas);
+      overheadTexture.needsUpdate = true;
+      overheadMat = new THREE.SpriteMaterial({
+        map: overheadTexture,
+        transparent: true,
+        opacity: 0.95,
+        depthTest: false,
+      });
+      overheadMesh = new THREE.Sprite(overheadMat);
+      overheadMesh.scale.set(0.85, 0.425, 1);
+      overheadMesh.position.set(0, baseOverheadY, 0);
+      markerGroup.add(overheadMesh);
+    }
+  }
+
+  // Fallback for headless/Node test environments
+  if (!overheadMesh) {
+    const fallbackGeo = new THREE.ConeGeometry(0.12, 0.24, 4);
+    fallbackGeo.rotateX(Math.PI);
+    overheadMat = new THREE.MeshBasicMaterial({ color: accentColor, transparent: true, opacity: 0.85 });
+    overheadMesh = new THREE.Mesh(fallbackGeo, overheadMat);
+    overheadMesh.position.set(0, baseOverheadY, 0);
+    markerGroup.add(overheadMesh);
+  }
+
+  return {
+    group: markerGroup,
+    groundMaterial: ringMat,
+    overheadMesh,
+    overheadMaterial: overheadMat,
+    overheadTexture,
+    baseOverheadY,
+  };
 }
 
 function getOptionalStorage() {
@@ -134,10 +208,14 @@ export class FightMode {
     this.setPlaybook('fighter_a', playbookA.length ? playbookA : storedA.tactics, playbookA.length ? playbookRevisionA : storedA.revision);
     this.setPlaybook('fighter_b', playbookB.length ? playbookB : storedB.tactics, playbookB.length ? playbookRevisionB : storedB.revision);
 
-    // Ground marker to identify the coached player fighter (YOU)
+    // Ground & Overhead markers to identify the coached player fighter (YOU)
     const marker = createPlayerMarker(defA);
     this.playerMarker = marker.group;
-    this._playerMarkerMat = marker.material;
+    this._playerGroundMat = marker.groundMaterial;
+    this._playerOverheadMesh = marker.overheadMesh;
+    this._playerOverheadMat = marker.overheadMaterial;
+    this._playerOverheadTexture = marker.overheadTexture;
+    this._baseOverheadY = marker.baseOverheadY;
     this.fighterA.group.add(this.playerMarker);
 
     // Track last-applied animation to avoid re-triggering
@@ -178,9 +256,15 @@ export class FightMode {
     // Sync presentation from simulation state
     this._syncPresentation(delta);
 
-    // Subtle breathing pulse on the player ground marker
-    if (this._playerMarkerMat) {
-      this._playerMarkerMat.opacity = 0.65 + 0.18 * Math.sin(this.sim.clock.tick * 0.08);
+    // Subtle breathing pulse on ground marker & floating bob on overhead marker
+    if (this._playerGroundMat) {
+      this._playerGroundMat.opacity = 0.65 + 0.18 * Math.sin(this.sim.clock.tick * 0.08);
+    }
+    if (this._playerOverheadMesh && this._baseOverheadY) {
+      this._playerOverheadMesh.position.y = this._baseOverheadY + Math.sin(this.sim.clock.tick * 0.09) * 0.04;
+    }
+    if (this._playerOverheadMat) {
+      this._playerOverheadMat.opacity = 0.86 + 0.12 * Math.sin(this.sim.clock.tick * 0.09);
     }
 
     // Notify UI
@@ -422,7 +506,6 @@ export class FightMode {
   _syncFighterAnim(fighter, state, lastAnimKey) {
     const map = this.ACTION_ANIM_MAP[state.actionId];
     if (!map) {
-      // Idle
       if (this[lastAnimKey] !== 'idle') {
         fighter.playAnimation('idle', { crossFade: 0.12 });
         this[lastAnimKey] = 'idle';
@@ -430,11 +513,22 @@ export class FightMode {
       return;
     }
 
-    const anim = map[state.actionPhase] || map.startup;
-    if (this[lastAnimKey] !== `${state.actionId}_${state.actionPhase}`) {
-      fighter.playAnimation(anim, { crossFade: 0.05 });
-      this[lastAnimKey] = `${state.actionId}_${state.actionPhase}`;
-    }
+    // The simulation resets actionTick at every phase boundary. Map each
+    // phase into one continuous authored performance instead of restarting the
+    // anticipation on every STARTUP -> ACTIVE -> RECOVERY transition.
+    const definition = getAction(state.actionId);
+    const capability = state.id === 'fighter_a' ? this.sim.capA : this.sim.capB;
+    const action = applyCapability(definition, capability);
+    const phaseDuration = state.actionPhase === 'startup'
+      ? Math.max(1, action.startup)
+      : state.actionPhase === 'active'
+        ? Math.max(1, action.active || 1)
+        : Math.max(1, action.recovery);
+    const animationKey = `${state.actionId}_${state.actionPhase}`;
+    fighter.syncCombatAnimation(map[state.actionPhase] || map.startup,
+      state.actionPhase, state.actionTick === undefined ? 0 : this.sim.currentTick - state.actionTick,
+      phaseDuration);
+    this[lastAnimKey] = animationKey;
   }
 
   /** Reset the fight. */
@@ -465,8 +559,14 @@ export class FightMode {
         if (obj.geometry) obj.geometry.dispose();
         if (obj.material) obj.material.dispose();
       });
+      if (this._playerOverheadTexture) {
+        this._playerOverheadTexture.dispose();
+        this._playerOverheadTexture = null;
+      }
       this.playerMarker = null;
-      this._playerMarkerMat = null;
+      this._playerGroundMat = null;
+      this._playerOverheadMesh = null;
+      this._playerOverheadMat = null;
     }
     this.scene.remove(this.fighterA.group);
     this.scene.remove(this.fighterB.group);

@@ -299,7 +299,9 @@ async function readJson(request, maxBytes) {
 }
 
 function isAllowedOrigin(origin, configured) {
-  if (!origin || !configured) return false;
+  if (!origin) return false;
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+  if (!configured) return false;
   if (origin === configured) return true;
   try {
     const originUrl = new URL(origin);
@@ -316,14 +318,15 @@ function checkOrigin(request, env) {
   const configured = typeof env.ALLOWED_ORIGIN === 'string' ? env.ALLOWED_ORIGIN.trim().replace(/\/+$/, '') : '';
   const origin = (request.headers.get('origin') || '').trim().replace(/\/+$/, '');
   if (!origin) return { ok: true };
+  const localOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+  if (localOrigin) return { ok: true };
   if (configured) {
     return isAllowedOrigin(origin, configured)
       ? { ok: true }
       : { ok: false, error: { code: 'ORIGIN_NOT_ALLOWED', message: 'Origin is not allowed' } };
   }
   const requestOrigin = new URL(request.url).origin;
-  const localOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-  if (origin === requestOrigin || localOrigin) return { ok: true };
+  if (origin === requestOrigin) return { ok: true };
   return { ok: false, error: { code: 'ORIGIN_NOT_CONFIGURED', message: 'Set ALLOWED_ORIGIN before cross-origin use' } };
 }
 function fail(code, message) { return { ok: false, error: { code, message } }; }
@@ -332,9 +335,14 @@ function cors(response, request, env) {
   const headers = new Headers(response.headers);
   const configured = typeof env.ALLOWED_ORIGIN === 'string' && env.ALLOWED_ORIGIN
     ? env.ALLOWED_ORIGIN.trim().replace(/\/+$/, '')
-    : (request.headers.get('origin') || '*');
+    : '';
   const origin = (request.headers.get('origin') || '').trim().replace(/\/+$/, '');
-  const allowOrigin = (configured && isAllowedOrigin(origin, configured)) ? origin : configured;
+  let allowOrigin = '*';
+  if (origin && isAllowedOrigin(origin, configured)) {
+    allowOrigin = origin;
+  } else if (configured) {
+    allowOrigin = configured;
+  }
   headers.set('access-control-allow-origin', allowOrigin);
   headers.set('access-control-allow-methods', 'POST, GET, OPTIONS');
   headers.set('access-control-allow-headers', 'content-type, x-request-id');

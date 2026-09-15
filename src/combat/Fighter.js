@@ -12,17 +12,35 @@ export class Fighter {
     this.group.rotation.y = facingAngle;
     this.group.add(root);
     this.baseRootY = root.position.y;
+    this.baseRootPosition = root.position.clone();
     this.mixer = new THREE.AnimationMixer(root);
     this.animations = createRobotAnimations(definition);
     this.actions = new Map();
     this.isPaused = false; this.loopEnabled = true; this.playbackSpeed = 1;
     this.tmpBox = new THREE.Box3();
     this.solePoint = new THREE.Vector3();
+    this.supportAnchor = new THREE.Vector3();
+    this.supportAnchors = new Map();
     this.clipList = this.animations.map((clip, index) => {
       const meta = { ...clip.userData, key: `clip_${index}`, index, duration: clip.duration };
       this.actions.set(meta.key, { clip, meta, action: this.mixer.clipAction(clip) });
       return meta;
     });
+    // Cache deterministic, group-local toe anchors at each clip's entry pose.
+    // Never capture a world anchor from the previous action: that accumulates
+    // drift on switches and pins a moving/turning simulation fighter in space.
+    for (const { action, meta } of this.actions.values()) {
+      if (!meta.support) continue;
+      action.reset().play();
+      this.mixer.update(0);
+      this.root.position.copy(this.baseRootPosition);
+      this.group.updateMatrixWorld(true);
+      this.solePoint.set(0, 0, definition.proportions.foot[2] * .3);
+      this.parts[meta.support].localToWorld(this.solePoint);
+      this.group.worldToLocal(this.solePoint);
+      this.supportAnchors.set(meta.id, this.solePoint.clone());
+      action.stop();
+    }
     this.mixer.addEventListener('finished', event => {
       if (event.action === this.currentAction) this.isPaused = true;
     });
@@ -55,6 +73,7 @@ export class Fighter {
     }
     this.currentAction = action;
     this.currentClip = entry.clip;
+    this.currentCombatPhase = null;
     this.currentMeta = entry.meta;
     this.currentClipName = entry.meta.key;
     this.isPaused = false;
@@ -97,6 +116,38 @@ export class Fighter {
     this.playbackSpeed = speed;
     this.mixer.timeScale = speed;
   }
+
+  /**
+   * Put a combat clip at the simulation's current phase instead of restarting
+   * it every time STARTUP/ACTIVE/RECOVERY changes. The simulation owns the
+   * timing; this only maps that timing onto the authored anticipation/contact/
+   * recoil performance.
+   */
+  syncCombatAnimation(key, phase, phaseTick, phaseDuration, phaseBoundaries) {
+    const entry = this.actions.get(key) || [...this.actions.values()].find(e => e.meta.id === key);
+    if (!entry) return false;
+    if (this.currentMeta?.id !== entry.meta.id) this.playAnimation(entry.meta.id, { crossFade: 0 });
+
+    phaseBoundaries ||= entry.meta.phases || { startup: .40, active: .48 };
+    const safeDuration = Math.max(1, phaseDuration);
+    const progress = THREE.MathUtils.clamp(phaseTick / safeDuration, 0, 1);
+    let normalized;
+    if (phase === 'startup') normalized = phaseBoundaries.startup * progress;
+    else if (phase === 'active') {
+      const start = phaseBoundaries.startup;
+      const end = phaseBoundaries.active;
+      normalized = start + (end - start) * progress;
+    } else if (phase === 'recovery') {
+      const start = phaseBoundaries.active;
+      normalized = start + (1 - start) * progress;
+    } else normalized = progress;
+
+    // scrubToTime leaves wall-clock playback paused. Advancing the mixer again
+    // in FightMode would move the pose ahead of its authoritative phase tick.
+    this.scrubToTime(normalized * this.currentClip.duration);
+    this.currentCombatPhase = phase;
+    return true;
+  }
   setLoop(loop) {
     this.loopEnabled = Boolean(loop);
     const repeatable = ['cycle', 'repeatable'].includes(this.currentMeta.playback);
@@ -112,8 +163,17 @@ export class Fighter {
   getBounds() { return this.tmpBox.setFromObject(this.group); }
 
   groundFeet() {
-    this.root.position.y = this.baseRootY;
+    this.root.position.copy(this.baseRootPosition);
     this.group.updateMatrixWorld(true);
+    const anchor = this.supportAnchors.get(this.currentMeta?.id);
+    if (anchor && this.currentMeta?.grounding !== 'body') {
+      this.solePoint.set(0, 0, this.definition.proportions.foot[2] * .3);
+      this.parts[this.currentMeta.support].localToWorld(this.solePoint);
+      this.group.worldToLocal(this.solePoint);
+      this.root.position.x += anchor.x - this.solePoint.x;
+      this.root.position.z += anchor.z - this.solePoint.z;
+      this.group.updateMatrixWorld(true);
+    }
     if (this.currentMeta?.grounding === 'body') {
       // Falling cannot be grounded by the soles: that would lift a horizontal
       // body into the air. Bounds are only used for the three down-state clips.

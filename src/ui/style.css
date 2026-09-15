@@ -1167,19 +1167,29 @@ dialog p {
 
 /* Fight mode uses the workspace as a full-width arena after dossier/roster
    panels are hidden. Keep the canvas dimensions owned by normal layout. */
-.site-main.fight-mode-active .lab-layout {
+.site-main.fight-mode-active .lab-layout,
+.site-main.vs-setup-active .lab-layout {
   display: block;
 }
-.site-main.fight-mode-active .workspace {
+.site-main.fight-mode-active .workspace,
+.site-main.vs-setup-active .workspace {
   width: 100%;
 }
-.site-main.fight-mode-active .showcase {
+.site-main.fight-mode-active .showcase,
+.site-main.vs-setup-active .showcase {
   display: block;
   min-height: 680px;
 }
-.site-main.fight-mode-active .viewport {
+.site-main.fight-mode-active .viewport,
+.site-main.vs-setup-active .viewport {
   width: 100%;
   min-height: 680px;
+}
+.site-main.vs-setup-active .page-heading,
+.site-main.vs-setup-active aside,
+.site-main.vs-setup-active .motion-panel,
+.site-main.vs-setup-active .dossier {
+  display: none !important;
 }
 
 /* ── Fight HUD ─────────────────────────────────────────────────── */
@@ -1258,16 +1268,17 @@ dialog p {
 .fight-status.fight-ko {
   color: #d33; font-weight: 700; font-size: 14px;
 }
-/* ── Fight Result & Victory / Defeat Modal ────────────────────── */
+/* ── Fight Result / centered outcome overlay ──────────────────── */
 .fight-result {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 15;
-  width: 90%;
-  max-width: 460px;
-  box-sizing: border-box;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(245, 245, 238, .56);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
   pointer-events: auto;
 }
 
@@ -1276,161 +1287,131 @@ dialog p {
 }
 
 .result-banner {
-  background: rgba(18, 20, 24, 0.96);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  padding: 20px 22px;
+  width: min(90vw, 460px);
+  background: rgba(245, 245, 238, .98);
+  border: 1px solid #c8cfb8;
+  border-top: 4px solid var(--accent);
+  border-radius: 2px;
+  padding: 26px 28px 22px;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65);
-  animation: resultSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 18px 46px rgba(42, 50, 29, .20);
+  animation: resultSlideIn .25s cubic-bezier(.16, 1, .3, 1);
 }
 
 @keyframes resultSlideIn {
-  from { opacity: 0; transform: scale(0.92); }
-  to   { opacity: 1; transform: scale(1); }
+  from { opacity: 0; transform: translateY(10px) scale(.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-.result-banner.banner-victory {
-  border-top: 4px solid #2a8c4a;
-  box-shadow: 0 0 30px rgba(42, 140, 74, 0.4), 0 16px 40px rgba(0, 0, 0, 0.65);
-}
-.result-banner.banner-victory .result-title {
-  color: #4ade80;
-  text-shadow: 0 0 20px rgba(74, 222, 128, 0.5);
-}
-
-.result-banner.banner-defeat {
-  border-top: 4px solid #e03a1a;
-  box-shadow: 0 0 30px rgba(224, 58, 26, 0.4), 0 16px 40px rgba(0, 0, 0, 0.65);
-}
-.result-banner.banner-defeat .result-title {
-  color: #f87171;
-  text-shadow: 0 0 20px rgba(248, 113, 113, 0.5);
-}
-
-.result-banner.banner-draw {
-  border-top: 4px solid #e0a820;
-  box-shadow: 0 0 30px rgba(224, 168, 32, 0.4), 0 16px 40px rgba(0, 0, 0, 0.65);
-}
-.result-banner.banner-draw .result-title {
-  color: #fbbf24;
-}
+.result-banner.banner-victory { border-top-color: #5d874f; }
+.result-banner.banner-defeat { border-top-color: #b45f54; }
+.result-banner.banner-draw { border-top-color: #a28b4f; }
+.result-banner.banner-victory .result-title { color: #4e7744; }
+.result-banner.banner-defeat .result-title { color: #a6534a; }
+.result-banner.banner-draw .result-title { color: #8c773f; }
 
 .result-badge-wrap {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: 16px;
   width: 100%;
+  margin-bottom: 20px;
 }
 
 .result-kicker {
-  font: 9px var(--mono);
-  letter-spacing: .14em;
-  color: rgba(255, 255, 255, 0.5);
+  font: 8px var(--mono);
+  letter-spacing: .12em;
+  color: var(--muted);
   text-transform: uppercase;
-  margin-bottom: 4px;
+  margin-bottom: 7px;
 }
+.result-kicker b { color: #a2aa91; font-weight: 500; }
 
 .result-title {
   font-family: var(--cond);
-  font-size: 26px;
+  font-size: clamp(34px, 5vw, 48px);
+  line-height: .95;
   font-weight: 800;
-  letter-spacing: .08em;
+  letter-spacing: .06em;
+  color: var(--ink);
   text-transform: uppercase;
-  margin: 2px 0 4px 0;
+  margin: 2px 0 8px;
 }
+.result-title span { color: #a2aa91; font-weight: 500; }
 
 .result-subtext {
-  font: 11px var(--mono);
+  font: 9px var(--mono);
   font-weight: 600;
   letter-spacing: .08em;
-  color: #ffde59;
+  color: var(--accent-fg);
   text-transform: uppercase;
 }
 
 .result-main-actions {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
   width: 100%;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
+.btn-result-primary,
+.btn-result-secondary,
+.btn-result-tiny {
+  cursor: pointer;
+  text-align: center;
+  text-transform: uppercase;
+  transition: background .15s, border-color .15s, color .15s, transform .15s;
+}
+.btn-result-primary span,
+.btn-result-secondary span { color: #a2aa91; font-weight: 500; }
+
 .btn-result-primary {
-  background: linear-gradient(135deg, #e03a1a 0%, #ff6a00 100%);
-  border: 0;
-  color: #ffffff;
+  background: var(--accent-fg);
+  border: 1px solid var(--accent-fg);
+  color: var(--paper);
   font-family: var(--cond);
   font-size: 15px;
   font-weight: 800;
   letter-spacing: .1em;
-  text-transform: uppercase;
-  padding: 10px 18px;
-  border-radius: 5px;
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(224, 58, 26, 0.4);
-  transition: all .15s;
-  text-align: center;
+  padding: 11px 18px;
 }
-
-.btn-result-primary:hover {
-  filter: brightness(1.15);
-  transform: translateY(-1px);
-}
+.btn-result-primary:hover { background: var(--ink); border-color: var(--ink); transform: translateY(-1px); }
 
 .btn-result-secondary {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, .42);
+  border: 1px solid #cdd3bf;
+  color: var(--ink);
   font-family: var(--cond);
   font-size: 13px;
   font-weight: 700;
   letter-spacing: .08em;
-  text-transform: uppercase;
   padding: 9px 16px;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: all .15s;
-  text-align: center;
 }
-
-.btn-result-secondary:hover {
-  background: rgba(255, 255, 255, 0.16);
-  color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.4);
-}
+.btn-result-secondary:hover { background: #e5eccc; border-color: #a9b38b; color: var(--accent-fg); }
 
 .result-replay-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   width: 100%;
   justify-content: center;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
 }
 
 .btn-result-tiny {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: rgba(255, 255, 255, 0.7);
+  background: transparent;
+  border: 1px solid #d0d5c6;
+  color: var(--muted);
   font: 8px var(--mono);
-  padding: 5px 8px;
-  border-radius: 3px;
-  cursor: pointer;
-  transition: all .15s;
+  padding: 6px 8px;
   white-space: nowrap;
 }
-
-.btn-result-tiny:hover {
-  background: rgba(255, 255, 255, 0.15);
-  color: #fff;
-}
+.btn-result-tiny:hover { background: #e5eccc; border-color: #a9b38b; color: var(--accent-fg); }
 .coach-panel {
   position: absolute;
   left: 12px; right: 12px; bottom: 48px;
@@ -1696,9 +1677,9 @@ dialog p {
   position: absolute;
   inset: 0;
   z-index: 12;
-  background: rgba(14, 16, 20, 0.95);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: rgba(14, 16, 20, 0.96);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   color: #f5f5ee;
   display: flex;
   flex-direction: column;
@@ -2077,48 +2058,174 @@ dialog p {
 /* ── Responsive adjustments for VS Setup ── */
 @media (max-width: 700px) {
   .vs-setup-inner {
-    padding: 10px 8px;
+    padding: 8px 10px;
+    max-height: 100vh;
+    justify-content: space-between;
+  }
+  .vs-header {
+    padding-bottom: 6px;
+    margin-bottom: 6px;
+  }
+  .vs-heading {
+    font-size: 18px;
   }
   .vs-roster-row {
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
   }
   .vs-fighter-card {
     max-width: 100%;
-    padding: 10px 12px;
+    padding: 8px 10px;
   }
   .vs-portrait-box {
-    height: 90px;
-    margin-bottom: 6px;
+    height: 60px;
+    margin-bottom: 4px;
+  }
+  .vs-tagline {
+    display: none;
   }
   .vs-name {
-    font-size: 18px;
+    font-size: 16px;
   }
   .vs-center-col {
     flex-direction: row;
     justify-content: center;
-    gap: 10px;
-    padding: 2px 0;
+    gap: 8px;
+    padding: 0;
   }
   .vs-emblem-circle {
-    width: 38px;
-    height: 38px;
+    width: 32px;
+    height: 32px;
   }
   .vs-emblem-text {
-    font-size: 17px;
+    font-size: 14px;
   }
   .vs-match-info {
-    flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: center;
+    display: none;
   }
   .vs-actions-bar {
-    flex-direction: column;
+    flex-direction: row;
     gap: 8px;
+    margin-top: 6px;
+    padding-top: 6px;
   }
-  .vs-fight-btn, .vs-back-btn {
-    width: 100%;
+  .vs-back-btn {
+    flex: 0 0 auto;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  .vs-fight-btn {
+    flex: 1;
     max-width: 100%;
-    padding: 10px;
+    padding: 9px 16px;
+    font-size: 14px;
   }
+}
+
+/* ── Fighting Game UI Enhancements (Top-bar, Hero, Dossier) ────── */
+.nav-item.nav-fight-highlight {
+  background: linear-gradient(135deg, rgba(224, 58, 26, 0.12), rgba(255, 106, 0, 0.2));
+  border: 1px solid rgba(224, 58, 26, 0.5);
+  color: #ff5522;
+  font-weight: 700;
+  box-shadow: 0 0 10px rgba(224, 58, 26, 0.15);
+}
+
+.nav-item.nav-fight-highlight:hover {
+  background: linear-gradient(135deg, rgba(224, 58, 26, 0.25), rgba(255, 106, 0, 0.35));
+  border-color: #ff5522;
+  box-shadow: 0 0 16px rgba(224, 58, 26, 0.35);
+}
+
+.nav-item.nav-fight-highlight.active {
+  background: linear-gradient(135deg, #e03a1a, #ff6a00);
+  color: #ffffff;
+  border-color: #ff6a00;
+}
+
+.nav-fight-icon {
+  margin-right: 4px;
+}
+
+.tag-live {
+  background: #e03a1a !important;
+  color: #ffffff !important;
+  font-weight: 700;
+  animation: pulse-live 1.8s ease-in-out infinite;
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.72; transform: scale(0.96); }
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.hero-fight-btn {
+  background: linear-gradient(135deg, #e03a1a 0%, #ff6a00 100%);
+  color: #ffffff;
+  font-family: var(--cond);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: .10em;
+  padding: 10px 22px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(224, 58, 26, 0.4);
+  transition: transform .15s, box-shadow .15s;
+}
+
+.hero-fight-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 22px rgba(224, 58, 26, 0.6);
+}
+
+.hero-lab-btn {
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-family: var(--cond);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  padding: 10px 18px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .15s;
+}
+
+.hero-lab-btn:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.btn-dossier-fight {
+  width: 100%;
+  margin-top: 10px;
+  background: linear-gradient(135deg, #e03a1a 0%, #ff7a18 100%);
+  color: #ffffff;
+  font-family: var(--cond);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: .10em;
+  padding: 11px 16px;
+  border-radius: 5px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 14px rgba(224, 58, 26, 0.35);
+  transition: all .15s;
+}
+
+.btn-dossier-fight:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(224, 58, 26, 0.55);
 }

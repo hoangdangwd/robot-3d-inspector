@@ -13,6 +13,7 @@
 import * as THREE from 'three';
 import { R15_PART_NAMES } from './robotCatalog.js';
 import { foundationClips } from './combatMotionVocabulary.js';
+import { applyReferenceMotion } from './ReferenceMotion.js';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 const e = (x = 0, y = 0, z = 0) => [x, y, z];
@@ -206,9 +207,16 @@ export function createRobotAnimations(definition) {
     impacts: i === 4 ? markers[definition.featureStyle] : [],
   }));
   const foundation = foundationClips(definition, baseStance(definition.featureStyle)).map(spec => {
+    // Quaternius' full-body performances provide the timing and weight cues;
+    // the delta is retargeted onto this robot's own guard pose above.
+    const referenceId = ['jab', 'cross', 'hook_left', 'hook_right', 'walk_forward', 'walk_backward', 'body_jab', 'body_cross'].includes(spec.id) ? spec.id : null;
     const clip = compile(definition, spec.name, spec.family, spec.duration, spec.description, spec.beats);
+    if (referenceId) applyReferenceMotion(clip, spec, definition);
     const { beats, name, duration, ...meta } = spec;
-    Object.assign(clip.userData, meta);
+    Object.assign(clip.userData, meta, referenceId ? {
+      reference: true,
+      support: spec.id === 'hook_left' || spec.id === 'uppercut_left' ? 'RightFoot' : 'LeftFoot',
+    } : {});
     return clip;
   });
   return [...bespoke, ...foundation];

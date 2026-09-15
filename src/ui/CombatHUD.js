@@ -1,5 +1,5 @@
 import { getRobotDefinition } from '../robots/robotCatalog.js';
-import { resolveMatchOutcome } from '../match/MatchSetup.js';
+import { resolveMatchOutcome, resolveFighterLabels } from '../match/MatchSetup.js';
 
 // ── icon system (inline SVG, no external deps) ─────────────────
 const ICONS = {
@@ -73,26 +73,34 @@ export class CombatHUD {
     <span class="brand-mark">${icon('cube')}</span>ROBOT<span class="brand-light">FOUNDRY</span><span class="brand-period">®</span>
   </a>
   <nav class="top-nav">
-    <button class="nav-item active" id="nav-lab">Fighter lab<span class="tag">01</span></button>
-    <button class="nav-item" id="nav-fight">Fight mode<span class="tag">02</span></button>
+    <button class="nav-item active" id="nav-lab">Hangar / Lab<span class="tag">01</span></button>
+    <button class="nav-item nav-fight-highlight" id="nav-fight" aria-label="Vào đấu đối kháng"><span class="nav-fight-icon">⚔</span> Fight Mode<span class="tag tag-live">LIVE</span></button>
     <button class="nav-item" id="nav-history">History<span class="tag">03</span></button>
     <button class="nav-item" id="nav-about">The project ${icon('arrow')}</button>
   </nav>
   <div class="build-label">
-    <span class="status-dot"></span> SYSTEM ONLINE <span style="border-left:1px solid var(--line);padding-left:12px;margin-left:4px;color:#a2a597">BUILD .02</span>
+    <span class="status-dot"></span> ARENA READY <span style="border-left:1px solid var(--line);padding-left:12px;margin-left:4px;color:#a2a597">BUILD .02</span>
   </div>
 </header>
 
 <main class="site-main">
   <section class="page-heading">
-    <div>
+    <div class="heading-content">
       <div class="eyebrow">DESIGN. INSPECT. UNLEASH.</div>
       <h1>Meet your next <span>heavy metal.</span></h1>
-      <p>Five fighters. Fifteen parts. Zero mercy.</p>
+      <p>Five fighters. Fifteen parts. Zero mercy. Chọn chiến binh và bước thẳng vào sàn đấu.</p>
+      <div class="hero-actions">
+        <button class="hero-fight-btn" id="hero-fight-btn" type="button">
+          ⚔ VÀO SÀN ĐẤU (QUICK FIGHT)
+        </button>
+        <button class="hero-lab-btn" id="hero-lab-btn" type="button">
+          🛡 SOI THÔNG SỐ ROBOT
+        </button>
+      </div>
     </div>
     <div class="lab-tag">
       ${icon('cube')}
-      <span>ROBOT DEVELOPMENT LAB<small>PROTOTYPE SERIES / VOL. 002</small></span>
+      <span>ROBOT COMBAT ARENA<small>AUTONOMOUS BOXING / VOL. 002</small></span>
     </div>
   </section>
 
@@ -129,49 +137,44 @@ export class CombatHUD {
           <!-- Fight HUD overlay (hidden in showcase mode) -->
           <div class="fight-hud" id="fight-hud" style="display:none">
             <div class="fight-bar fight-bar-a">
-              <span class="fight-name" id="fight-name-a">FIGHTER A</span>
+              <span class="fight-name" id="fight-name-a"><span class="fight-badge badge-you">YOU</span> <strong class="fighter-label-name">PLAYER</strong></span>
               <div class="fight-health-track"><div class="fight-health-fill" id="fight-hp-a"></div></div>
               <div class="fight-stamina-track"><div class="fight-stamina-fill" id="fight-sta-a"></div></div>
               <div class="fight-posture-track" title="Posture"><div class="fight-posture-fill" id="fight-pos-a"></div></div>
             </div>
             <div class="fight-status" id="fight-status">FIGHTING</div>
-            <div class="fight-result" id="fight-result" hidden aria-label="Match outcome dialog">
-              <div class="result-banner banner-victory" id="result-banner">
-                <div class="result-badge-wrap">
-                  <span class="result-kicker">KẾT QUẢ TRẬN ĐẤU // MATCH OUTCOME</span>
-                  <h2 class="result-title" id="result-title">VICTORY // CHIẾN THẮNG</h2>
-                  <span class="result-subtext" id="result-subtext">KNOCKOUT VICTORY · ĐO VÁN</span>
-                  <span id="fight-result-text" class="result-legacy-text" style="display:none"></span>
-                </div>
-
-                <!-- Primary Game Loop Buttons -->
-                <div class="result-main-actions">
-                  <button id="result-rematch" class="btn-result-primary" type="button">
-                    ↺ ĐẤU LẠI (REMATCH)
-                  </button>
-                  <button id="result-change-opponent" class="btn-result-secondary" type="button">
-                    ⚔ ĐỔI ĐỐI THỦ
-                  </button>
-                  <button id="result-back-lab" class="btn-result-secondary" type="button">
-                    🏠 VỀ LAB / HANGAR
-                  </button>
-                </div>
-
-                <!-- Secondary Replay Actions -->
-                <div class="result-replay-actions">
-                  <button id="replay-watch-last" class="btn-result-tiny" type="button">🎬 WATCH REPLAY</button>
-                  <button id="replay-export" class="btn-result-tiny" type="button">💾 EXPORT REPLAY</button>
-                  <button id="replay-import-btn" class="btn-result-tiny" type="button">📂 IMPORT</button>
-                </div>
-              </div>
-            </div>
             <div class="fight-bar fight-bar-b">
-              <span class="fight-name" id="fight-name-b">FIGHTER B</span>
+              <span class="fight-name" id="fight-name-b"><span class="fight-badge badge-cpu">CPU</span> <strong class="fighter-label-name">OPPONENT</strong></span>
               <div class="fight-health-track"><div class="fight-health-fill" id="fight-hp-b"></div></div>
-              <div class="fight-stamina-track"><div class="fight-stamina-fill" id="fight-sta-b"></div></div>
+              <div class="fight-stamina-track"><div class="fight-stamina-fill" id="fight-sta-a"></div></div>
               <div class="fight-posture-track" title="Posture"><div class="fight-posture-fill" id="fight-pos-b"></div></div>
             </div>
           </div>
+
+          <!-- Result is a viewport-level overlay, not a child of the top HUD row. -->
+          <div class="fight-result" id="fight-result" hidden aria-label="Match outcome dialog">
+            <div class="result-banner banner-victory" id="result-banner">
+              <div class="result-badge-wrap">
+                <span class="result-kicker">KẾT QUẢ TRẬN ĐẤU <b>//</b> MATCH OUTCOME</span>
+                <h2 class="result-title" id="result-title">VICTORY <span>//</span> CHIẾN THẮNG</h2>
+                <span class="result-subtext" id="result-subtext">KNOCKOUT VICTORY · ĐO VÁN</span>
+                <span id="fight-result-text" class="result-legacy-text" style="display:none"></span>
+              </div>
+
+              <div class="result-main-actions">
+                <button id="result-rematch" class="btn-result-primary" type="button">ĐẤU LẠI <span>//</span> REMATCH</button>
+                <button id="result-change-opponent" class="btn-result-secondary" type="button">ĐỔI ĐỐI THỦ</button>
+                <button id="result-back-lab" class="btn-result-secondary" type="button">VỀ LAB <span>//</span> HANGAR</button>
+              </div>
+
+              <div class="result-replay-actions">
+                <button id="replay-watch-last" class="btn-result-tiny" type="button">WATCH REPLAY</button>
+                <button id="replay-export" class="btn-result-tiny" type="button">EXPORT REPLAY</button>
+                <button id="replay-import-btn" class="btn-result-tiny" type="button">IMPORT JSON</button>
+              </div>
+            </div>
+          </div>
+
           <section class="coach-panel" id="coach-panel" aria-label="Live coach controls" style="display:none">
             <div class="coach-panel-head">
               <span class="coach-kicker" id="coach-kicker">LIVE COACH / REACTIVE ONLY</span>
@@ -368,6 +371,9 @@ export class CombatHUD {
               <span>SIGNATURE MOVE</span>
               <span class="sig-name" id="sig-name">—</span>
             </div>
+          </button>
+          <button class="btn-dossier-fight" id="btn-dossier-fight" type="button" aria-label="Xuất trận với robot này">
+            <span class="fight-swords">⚔</span> XUẤT TRẬN VỚI ROBOT NÀY (FIGHT!)
           </button>
           <div class="parts-badge">
             ${icon('cube')}<span><strong>15</strong> rigid body parts</span>
@@ -578,7 +584,16 @@ export class CombatHUD {
     el('nav-lab').addEventListener('click', () =>
       document.querySelector('.lab-layout')?.scrollIntoView({ behavior: 'smooth' })
     );
+    el('hero-lab-btn')?.addEventListener('click', () =>
+      document.querySelector('.lab-layout')?.scrollIntoView({ behavior: 'smooth' })
+    );
     el('nav-fight').addEventListener('click', () => {
+      options.onFightToggle?.();
+    });
+    el('hero-fight-btn')?.addEventListener('click', () => {
+      options.onFightToggle?.();
+    });
+    el('btn-dossier-fight')?.addEventListener('click', () => {
       options.onFightToggle?.();
     });
 
@@ -967,26 +982,44 @@ export class CombatHUD {
     const coachPanel = this._el('coach-panel');
     if (coachPanel) coachPanel.style.display = active ? '' : 'none';
 
-    // Update Coach context to player robot
+    // Update Coach context & fighter identity labels immediately
     const matchSetup = options.matchSetup;
     const playerDefId = matchSetup?.playerDefId || this._vsPlayerDefId || 'forge-titan';
+    const opponentDefId = matchSetup?.opponentDefId || this._vsOpponentDefId || 'aegis-prime';
     const playerDef = getRobotDefinition(playerDefId);
-    const shortName = playerDef?.shortName || 'TITAN';
+    const opponentDef = getRobotDefinition(opponentDefId);
+    const shortA = playerDef?.shortName || 'TITAN';
+    const shortB = opponentDef?.shortName || 'PRIME';
+
+    if (active) {
+      const nameA = this._el('fight-name-a');
+      const nameB = this._el('fight-name-b');
+      if (nameA) {
+        nameA.innerHTML = `<span class="fight-badge badge-you">YOU</span> <strong class="fighter-label-name">${shortA}</strong> · 100HP`;
+      }
+      if (nameB) {
+        nameB.innerHTML = `<span class="fight-badge badge-cpu">CPU</span> <strong class="fighter-label-name">${shortB}</strong> · 100HP`;
+      }
+    }
 
     const kicker = this._el('coach-kicker');
     if (kicker) {
       kicker.textContent = active
-        ? `COACHING ${shortName} (YOU) · CHỈ ĐẠO CHIẾN THUẬT`
+        ? `COACHING ${shortA} (YOU) · CHỈ ĐẠO CHIẾN THUẬT`
         : 'LIVE COACH / REACTIVE ONLY';
     }
     const coachInput = this._el('coach-input');
     if (coachInput) {
       coachInput.placeholder = active
-        ? `Ra lệnh cho ${shortName}: Jab him / Giữ khoảng cách...`
+        ? `Ra lệnh cho ${shortA}: Jab him / Giữ khoảng cách...`
         : 'Jab him / Giữ khoảng cách';
     }
 
-    if (!active) this.setCoachFeedback('TEXT READY · ROBOT AUTONOMOUS');
+    if (!active) {
+      this.setCoachFeedback('TEXT READY · ROBOT AUTONOMOUS');
+    } else {
+      this.setCoachFeedback(`SẴN SÀNG CHỈ ĐẠO ${shortA} (YOU) · ROBOT TỰ CHỦ CHIẾN ĐẤU`);
+    }
   }
 
   // ── Replay mode UI ──────────────────────────────────────────────

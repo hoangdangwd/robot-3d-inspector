@@ -24,6 +24,19 @@ try {
     const text = await page.locator('#pattern-status').textContent();
     if (outcome) assert.ok(text.includes(`31: cross → ${outcome}`), text);
     else assert.match(text, /pattern_aborted — followup_unavailable/);
+    if (outcome) {
+      const pose = await page.evaluate(() => {
+        const fight = window.__app.fightMode, fighter = fight.fighterA;
+        const fraction = fighter.getCurrentTime() / fighter.getDuration();
+        const before = Object.values(fighter.parts).flatMap(part => part.quaternion.toArray());
+        fight._syncPresentation(.03);
+        const after = Object.values(fighter.parts).flatMap(part => part.quaternion.toArray());
+        return { id: fighter.currentMeta.id, fraction, unchanged: before.every((v, i) => v === after[i]) };
+      });
+      assert.equal(pose.id, 'cross');
+      assert.ok(Math.abs(pose.fraction - .4) < 1e-5, 'tick 31 contact displays the cross extension marker');
+      assert.ok(pose.unchanged, 'render delta does not advance the simulation-driven attack pose');
+    }
     await page.screenshot({ path: `artifacts/qa/patterns/${response}.png` });
   }
   await page.locator('#pattern-reset').click();

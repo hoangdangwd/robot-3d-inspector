@@ -336,6 +336,11 @@ class RobotFoundryApp {
   }
 
   _coachEndpoint(route) {
+    // When running in local development (Vite dev server on localhost / 127.0.0.1),
+    // route through Vite's reverse proxy using relative URL to avoid browser CORS preflight blocks.
+    if (import.meta.env.DEV || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))) {
+      return route;
+    }
     const configured = String(import.meta.env.VITE_COACH_API_URL || '').replace(/\/$/, '');
     if (!configured) return route;
     return `${configured.replace(/\/api\/coach\/interpret$/, '')}${route}`;
@@ -706,6 +711,7 @@ class RobotFoundryApp {
   openVsSetup() {
     if (this.mode === 'fight' || this.mode === 'replay') return;
     this.mode = 'vs_setup';
+    if (typeof window !== 'undefined') window.scrollTo(0, 0);
     const playerDefId = this.activeRobotId || 'forge-titan';
     if (!this._selectedOpponentId || this._selectedOpponentId === playerDefId) {
       this._selectedOpponentId = pickRandomOpponent(playerDefId, ROBOT_CATALOG);

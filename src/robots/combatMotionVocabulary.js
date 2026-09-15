@@ -14,7 +14,14 @@ export function foundationClips(definition, base) {
   const result = [];
   const beat = (t, pose = {}, shift = v()) => ({ t, pose, shift, turn: 0 });
   const add = (id, name, family, duration, description, beats, extra = {}) => {
-    result.push({ id, name, family, duration: duration * p.tempo, description, beats,
+    const defensePhases = id === 'guard_high' ? [.18,.72] : id === 'guard_low' ? [.2,.7]
+      : id.startsWith('parry_') ? [.32,.45] : id.startsWith('slip_') ? [.30,.48]
+      : id === 'duck' ? [.32,.53] : id === 'roll' ? [.32,.60] : null;
+    const phases = defensePhases ? { startup: defensePhases[0], active: defensePhases[1] }
+      : family === 'ATTACK' ? { startup: extra.impacts?.[0] ?? .25, active: id === 'feint_jab' ? .25 : .48 } : undefined;
+    const support = family === 'MOVEMENT' || family === 'RECOVERY' ? undefined
+      : id.endsWith('_left') || id === 'jab' || id === 'body_jab' ? 'RightFoot' : 'LeftFoot';
+    result.push({ id, name, family, duration: duration * p.tempo, description, beats, phases, support,
       playback: 'repeatable', entry: 'ready', exit: 'ready', impacts: [], grounding: 'feet', ...extra });
   };
   const load = {
@@ -23,7 +30,7 @@ export function foundationClips(definition, base) {
   };
   const closed = {
     LeftUpperArm: v(-.78, -.15, p.spread * .25), RightUpperArm: v(-.78, .15, -p.spread * .25),
-    LeftLowerArm: v(p.guard), RightLowerArm: v(p.guard), Head: v(.10),
+    LeftLowerArm: v(-1.85), RightLowerArm: v(-1.85), Head: v(.10),
   };
 
   // In-place gait: no arena translation. The simulator will match stride to velocity.
@@ -89,8 +96,17 @@ export function foundationClips(definition, base) {
     if (body) extension[`${side}UpperArm`] = v(-1.06, sign*.08, -sign*.08);
     const follow = { ...extension, UpperTorso:v(body ? .24 : -.04,sign*p.twist*.8,-sign*.05),
       [`${side}LowerArm`]:v(kind === 'straight' ? -.23 : -1.12) };
-    const retract = { ...chamber, UpperTorso:v(.05,-sign*p.recoil), [`${side}UpperArm`]:v(-.65,0,-sign*p.spread) };
-    return [beat(0),beat(.28,chamber),beat(.40,extension),beat(.47,follow),beat(.69,retract),beat(1)];
+    // Separate leg drive, hip release and elbow extension. The old single
+    // chamber->extension interval moved all joints together like a puppet.
+    const drive = { ...chamber, LowerTorso:v(.035,sign*p.twist*.20),
+      LeftLowerLeg:v(p.load*.95), RightLowerLeg:v(p.load*.7) };
+    const release = { ...drive, UpperTorso:v(body ? .2 : .04,sign*p.twist*.30),
+      [`${side}UpperArm`]:v(kind === 'uppercut' ? -.55 : -.95,sign*.06,-sign*(kind === 'hook' ? 1.1 : .14)),
+      [`${side}LowerArm`]:v(kind === 'straight' ? -.95 : -1.45) };
+    const retract = { ...closed, UpperTorso:v(.05,sign*p.twist*.18),
+      [`${side}UpperArm`]:v(-.78,0,-sign*.12), [`${side}LowerArm`]:v(-1.62) };
+    return [beat(0),beat(.19,chamber),beat(.28,drive),beat(.34,release),
+      beat(.40,extension),beat(.48,follow),beat(.66,retract),beat(.84,{...closed,...load}),beat(1)];
   };
   for (const [id,name,side,kind,body,duration] of [
     ['jab','Lead jab','Left','straight',false,.55],['cross','Rear cross','Right','straight',false,.72],
@@ -117,8 +133,8 @@ export function foundationClips(definition, base) {
       beat(0),beat(.18,closed),beat(.32,{...closed,[`${side}UpperArm`]:v(-.9,-sign*.55,sign*(.25+p.spread)),[`${side}LowerArm`]:v(-1.05),UpperTorso:v(.04,-sign*p.twist*.35)}),beat(.55,closed),beat(1),
     ]);
     add(`slip_${side.toLowerCase()}`,`Slip ${side.toLowerCase()}`,'DEFENSE',.72,'Né khỏi đường đấm bằng eo, cổ và gối; không dịch vị trí authoritative.',[
-      beat(0),beat(.30,{...load,UpperTorso:v(.18,-sign*p.twist*.5,sign*p.slip),Head:v(-.12,sign*.18,-sign*p.slip*.3)}),
-      beat(.48,{...load,UpperTorso:v(.12,-sign*p.twist*.45,sign*p.slip*.9)}),beat(1),
+      beat(0),beat(.30,{...load,UpperTorso:v(.18,-sign*p.twist*.5,-sign*p.slip),Head:v(-.12,sign*.18,sign*p.slip*.3)}),
+      beat(.48,{...load,UpperTorso:v(.12,-sign*p.twist*.45,-sign*p.slip*.9)}),beat(1),
     ]);
   }
   const crouch = {...closed,LeftUpperLeg:v(-.65-p.load*.4),RightUpperLeg:v(-.65-p.load*.4),LeftLowerLeg:v(1.3+p.load*.8),RightLowerLeg:v(1.3+p.load*.8),LeftFoot:v(-.65-p.load*.4),RightFoot:v(-.65-p.load*.4),UpperTorso:v(.22),Head:v(-.12)};

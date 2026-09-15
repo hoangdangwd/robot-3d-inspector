@@ -245,6 +245,48 @@ try {
   assert.ok(timedResult.result, 'match result is populated');
   assert.equal(timedResult.overlayHidden, false, 'result overlay is visible');
   assert.match(timedResult.titleText, /VICTORY|DEFEAT|DRAW/, 'result banner shows victory/defeat/draw title');
+  const outcomeLayouts = await evaluate(`(() => {
+    const app = window.__app;
+    const fm = app.fightMode;
+    const snapshot = () => {
+      const viewport = document.querySelector('#viewport-host').getBoundingClientRect();
+      const result = document.querySelector('#result-banner').getBoundingClientRect();
+      const overlay = document.querySelector('#fight-result').getBoundingClientRect();
+      const title = document.querySelector('#result-title').textContent;
+      return {
+        title,
+        className: document.querySelector('#result-banner').className,
+        centered: Math.abs((result.left + result.width / 2) - (viewport.left + viewport.width / 2)) < 2 &&
+          Math.abs((result.top + result.height / 2) - (viewport.top + viewport.height / 2)) < 2,
+        overlayCoversViewport: overlay.width >= viewport.width - 1 && overlay.height >= viewport.height - 1,
+        hasEmoji: /[\\u{1F300}-\\u{1FAFF}]/u.test(document.querySelector('#fight-result').textContent),
+      };
+    };
+    const render = (winnerId, reason) => {
+      const a = { ...fm.sim.getState('fighter_a') };
+      const b = { ...fm.sim.getState('fighter_b') };
+      app.hud.updateFightHUD({ a, b, matchStatus: reason === 'draw' ? 'draw' : 'ko', winnerId,
+        matchResult: { winnerId, reason, finalHealth: { fighter_a: a.health, fighter_b: b.health }, tick: fm.sim.currentTick },
+        coaching: fm.getCoachingSnapshot(), tick: fm.sim.currentTick, roundSecondsRemaining: 0 }, app.matchSetup);
+      document.querySelector('#result-banner').style.animation = 'none';
+      return snapshot();
+    };
+    return { victory: render('fighter_a', 'ko'), defeat: render('fighter_b', 'ko'), draw: render(null, 'draw') };
+  })()`);
+  for (const [name, layout] of Object.entries(outcomeLayouts)) {
+    assert.equal(layout.centered, true, `${name} result is centered in fight viewport`);
+    assert.equal(layout.overlayCoversViewport, true, `${name} result owns the full fight viewport`);
+    assert.equal(layout.hasEmoji, false, `${name} result uses text controls, not emoji icons`);
+  }
+  assert.match(outcomeLayouts.victory.title, /VICTORY/);
+  assert.match(outcomeLayouts.defeat.title, /DEFEAT/);
+  assert.match(outcomeLayouts.draw.title, /DRAW/);
+  assert.match(outcomeLayouts.victory.className, /banner-victory/);
+  assert.match(outcomeLayouts.defeat.className, /banner-defeat/);
+  assert.equal(outcomeLayouts.draw.className.includes('banner-draw'), true);
+  assert.equal(outcomeLayouts.victory.hasEmoji, false, 'result overlay does not use emoji icons');
+  const resultScreenshot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  await writeFile('artifacts/animation-library/fight-result-centered.png', Buffer.from(resultScreenshot.data, 'base64'));
   assert.equal(timedResult.replay.version, 2, 'replay export uses attack-defense rules v2');
   assert.ok(timedResult.replay.events.length > 0, 'replay contains validated events');
   assert.ok(timedResult.savedResults >= 1, 'match result persists locally');

@@ -10,7 +10,7 @@ A Three.js showcase for original robot fighters assembled from an R15-like contr
 - **Volt Kestrel** — athletic technical striker with shoulder capacitors and split-toe stabilizers.
 - **Solstice Mantis** — long-limbed range duelist with rising shoulder fins and a knee-to-cross signature.
 
-Each fighter has a bevelled, layered hard-surface body, distinct proportions/palette, six comparison stats, and a 40-clip full-pose rigid animation library: shared movement, attack, defense and recovery verbs plus six authored character clips. See [animation coverage and limitations](docs/ANIMATION_LIBRARY.md). Signature moves differ in choreography—not just their names. See [the fighter design notes](docs/ROBOT_SHOWCASE.md).
+Each fighter has a bevelled, layered hard-surface body, distinct proportions/palette, six comparison stats, and a 40-clip full-pose rigid animation library: shared movement, attack, defense and recovery verbs plus six authored character clips. See [animation coverage and limitations](docs/ANIMATION_LIBRARY.md). The imported Quaternius motion subset lives in `src/robots/motions/quaternius-clips.json`; [format, mapping and CC0 licenses](public/animations/README.md) are included locally. No separate demo directory is required. Signature moves differ in choreography—not just their names. See [the fighter design notes](docs/ROBOT_SHOWCASE.md).
 
 ## Run locally
 
@@ -77,11 +77,11 @@ Stats are design comparisons (0–100), not authoritative damage or simulation r
 - `/?qa&pattern=volt`: deterministic jab→cross review; five responses, pause/step/slow playback. Does not save tactics or match history.
 - `/?qa&opponent=volt`: ordinary autonomous Forge vs Volt match, with normal coaching/playbooks.
 - `pnpm validate:robot-patterns`; with dev server running, `pnpm test:browser:patterns`.
-- Only Volt has a new built-in pattern in this slice. Existing clips still need phase-sync and paired visual sign-off.
+- Only Volt has a new built-in pattern in this slice. Combat clips are phase-synchronized; complete paired visual sign-off is still needed. `pnpm validate:motion` covers local JSON data, phase sync at different render deltas, anatomical slips and planted support.
 
 ## Combat and animation team reference
 
-See [Attack–Defense Matrix v2](docs/ATTACK_DEFENSE_MATRIX.md) for the 80-cell combat table, animation briefs, timing sheet and review checklist. Run `pnpm validate:attack-defense` to check coverage and contact gates. Replay logs now use v2; v1 logs are incompatible with the changed contact rules. Existing animation clips still need phase-synchronized playback and paired visual review against this contract.
+See [Attack–Defense Matrix v2](docs/ATTACK_DEFENSE_MATRIX.md) for the 80-cell combat table, animation briefs, timing sheet and review checklist. Run `pnpm validate:attack-defense` to check coverage and contact gates. Replay logs now use v2; v1 logs are incompatible with the changed contact rules. Animation playback is phase-synchronized; paired visual review against this contract is still needed.
 
 ## Main structure
 
