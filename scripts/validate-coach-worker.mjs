@@ -106,5 +106,12 @@ console.log('\n── Coach Worker boundary ──');
   const body = await response.json();
   expect(response.status === 200 && body.previewTactic.schemaVersion === 2 && body.previewTactic.phases[0].sequence[0].intent.type === 'counter', 'Worker validates strategy-level v2 proposals');
 }
+{
+  const env = { ALLOWED_ORIGIN: 'https://robot-foundry-7m7.pages.dev' };
+  const preview = await worker.fetch(request('/api/coach/interpret', { method: 'OPTIONS', headers: { Origin: 'https://abc12345.robot-foundry-7m7.pages.dev' } }), env, {});
+  expect(preview.status === 204 && preview.headers.get('access-control-allow-origin') === 'https://abc12345.robot-foundry-7m7.pages.dev', 'Pages preview subdomains are allowed by CORS');
+  const untrusted = await worker.fetch(request('/api/coach/interpret', { method: 'POST', headers: { Origin: 'https://attacker.pages.dev', 'Content-Type': 'application/json' }, body: JSON.stringify({ transcript: 'jab', language: 'en-US' }) }), env, {});
+  expect(untrusted.status === 403, 'untrusted domain is rejected');
+}
 
 console.log(`\nPASS: ${assertions} assertions. Coach Worker boundary validated.\n`);

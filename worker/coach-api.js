@@ -298,12 +298,26 @@ async function readJson(request, maxBytes) {
   return JSON.parse(new TextDecoder().decode(bytes));
 }
 
+function isAllowedOrigin(origin, configured) {
+  if (!origin || !configured) return false;
+  if (origin === configured) return true;
+  try {
+    const originUrl = new URL(origin);
+    const configuredUrl = new URL(configured);
+    if (originUrl.protocol === configuredUrl.protocol &&
+        (originUrl.hostname === configuredUrl.hostname || originUrl.hostname.endsWith('.' + configuredUrl.hostname))) {
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
 function checkOrigin(request, env) {
   const configured = typeof env.ALLOWED_ORIGIN === 'string' ? env.ALLOWED_ORIGIN.trim().replace(/\/+$/, '') : '';
   const origin = (request.headers.get('origin') || '').trim().replace(/\/+$/, '');
   if (!origin) return { ok: true };
   if (configured) {
-    return origin === configured
+    return isAllowedOrigin(origin, configured)
       ? { ok: true }
       : { ok: false, error: { code: 'ORIGIN_NOT_ALLOWED', message: 'Origin is not allowed' } };
   }
@@ -319,7 +333,9 @@ function cors(response, request, env) {
   const configured = typeof env.ALLOWED_ORIGIN === 'string' && env.ALLOWED_ORIGIN
     ? env.ALLOWED_ORIGIN.trim().replace(/\/+$/, '')
     : (request.headers.get('origin') || '*');
-  headers.set('access-control-allow-origin', configured);
+  const origin = (request.headers.get('origin') || '').trim().replace(/\/+$/, '');
+  const allowOrigin = (configured && isAllowedOrigin(origin, configured)) ? origin : configured;
+  headers.set('access-control-allow-origin', allowOrigin);
   headers.set('access-control-allow-methods', 'POST, GET, OPTIONS');
   headers.set('access-control-allow-headers', 'content-type, x-request-id');
   headers.set('vary', 'Origin');

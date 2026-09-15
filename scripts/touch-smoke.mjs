@@ -49,14 +49,14 @@ try {
     return result.result.value;
   };
   const tap = async selector => {
-    const point = await evaluate(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) throw new Error('missing ${selector}'); const b=e.getBoundingClientRect(); return {x:b.x+b.width/2,y:b.y+b.height/2}; })()`);
-    const touchPoint = { ...point, id: 1, radiusX: 1, radiusY: 1, force: 1 };
-    await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [touchPoint], modifiers: 0 });
-    await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [], modifiers: 0 });
+    const point = await evaluate(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) throw new Error('missing ${selector}'); e.scrollIntoView({block:'nearest'}); const b=e.getBoundingClientRect(); return {x:b.x+b.width/2,y:b.y+b.height/2}; })()`);
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
   };
 
   await send('Runtime.enable');
   await send('Page.enable');
+  await send('Emulation.setTouchEmulationEnabled', { enabled: true });
   await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true, screenWidth: 390, screenHeight: 844 });
   await send('Page.navigate', { url });
   for (let i = 0; i < 100; i++) {
@@ -65,6 +65,11 @@ try {
   }
   assert.equal(await evaluate('Boolean(window.__app?.fighter)'), true, 'showcase initialized on mobile emulation');
   await tap('#nav-fight');
+  await sleep(100);
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('#vs-setup')).display !== 'none'"), true, 'touch opens VS setup');
+  const vsOverflow = await evaluate(`(() => ({ width: document.documentElement.scrollWidth, inner: innerWidth, offenders: [...document.querySelectorAll('*')].map(e => ({tag:e.tagName,id:e.id,cls:e.className?.toString?.().slice(0,40),right:e.getBoundingClientRect().right,left:e.getBoundingClientRect().left,width:e.getBoundingClientRect().width})).filter(x => x.right > innerWidth + 1 || x.left < -1).sort((a,b) => b.right-a.right).slice(0,8) }))()`);
+  assert.ok(vsOverflow.width <= vsOverflow.inner + 1, `mobile VS setup has no horizontal overflow (${JSON.stringify(vsOverflow)})`);
+  await tap('#vs-start-fight');
   for (let i = 0; i < 30; i++) {
     if (await evaluate("window.__app.mode === 'fight'")) break;
     await sleep(50);

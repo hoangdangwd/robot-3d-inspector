@@ -87,6 +87,22 @@ try {
   assert.equal(await evaluate('Boolean(window.__app?.fighter)'), true, 'showcase initialized');
 
   await evaluate("document.querySelector('#nav-fight').click()");
+  await sleep(100);
+  const vsSetup = await evaluate(`(() => ({
+    display: getComputedStyle(document.querySelector('#vs-setup')).display,
+    p1Name: document.querySelector('#vs-name-p1')?.textContent,
+    cpuName: document.querySelector('#vs-name-cpu')?.textContent,
+  }))()`);
+  assert.notEqual(vsSetup.display, 'none', 'VS Setup screen is displayed');
+  assert.ok(vsSetup.p1Name?.length > 0, 'P1 name is shown on VS screen');
+  assert.ok(vsSetup.cpuName?.length > 0, 'CPU name is shown on VS screen');
+
+  // Test random opponent button
+  await evaluate("document.querySelector('#vs-random-btn').click()");
+  await sleep(50);
+
+  // Click Fight button from VS setup to enter fight mode
+  await evaluate("document.querySelector('#vs-start-fight').click()");
   for (let i = 0; i < 30; i++) {
     if (await evaluate("window.__app.mode === 'fight' && Boolean(window.__app.fightMode)")) break;
     await sleep(50);
@@ -99,6 +115,8 @@ try {
     showcaseFighter: Boolean(window.__app.fighter),
     fightHud: getComputedStyle(document.querySelector('#fight-hud')).display,
     motionPanel: getComputedStyle(document.querySelector('.motion-panel')).display,
+    nameA: document.querySelector('#fight-name-a')?.textContent,
+    nameB: document.querySelector('#fight-name-b')?.textContent,
   }))()`);
   assert.equal(entered.mode, 'fight');
   assert.equal(entered.hasFightMode, true);
@@ -106,6 +124,8 @@ try {
   assert.notEqual(entered.fightHud, 'none');
   assert.equal(entered.motionPanel, 'none');
   assert.notEqual(entered.viewport.host.width, 0, 'fight viewport has layout width');
+  assert.match(entered.nameA, /YOU/, 'HUD Fighter A has YOU badge');
+  assert.match(entered.nameB, /CPU/, 'HUD Fighter B has CPU badge');
 
   await evaluate(`(() => { const input = document.querySelector('#coach-input'); input.value = 'stay outside'; document.querySelector('#coach-form').requestSubmit(); })()`);
   await sleep(100);
@@ -217,17 +237,36 @@ try {
     status: window.__app.fightMode.sim.matchStatus,
     result: window.__app.fightMode.sim.matchResult,
     overlayHidden: document.querySelector('#fight-result').hidden,
+    titleText: document.querySelector('#result-title')?.textContent,
     replay: window.__app.fightMode.exportReplay(),
     savedResults: JSON.parse(localStorage.getItem('robot-foundry.results.v1') || '[]').length,
   }))()`);
   assert.ok(['time', 'draw', 'ko'].includes(timedResult.status), `match reaches terminal result (${JSON.stringify(timedResult)})`);
   assert.ok(timedResult.result, 'match result is populated');
   assert.equal(timedResult.overlayHidden, false, 'result overlay is visible');
+  assert.match(timedResult.titleText, /VICTORY|DEFEAT|DRAW/, 'result banner shows victory/defeat/draw title');
   assert.equal(timedResult.replay.version, 2, 'replay export uses attack-defense rules v2');
   assert.ok(timedResult.replay.events.length > 0, 'replay contains validated events');
   assert.ok(timedResult.savedResults >= 1, 'match result persists locally');
   assert.equal(await evaluate(`(() => { const result = JSON.parse(localStorage.getItem('robot-foundry.results.v1') || '[]')[0]; const replay = JSON.parse(localStorage.getItem('robot-foundry.replays.v1') || '[]')[0]; return replay?.matchId === result?.id; })()`), true, 'saved replay is associated with its match result');
   assert.equal(await evaluate(`window.__app.persistence.importReplay(JSON.stringify({ version: 1, inputs: 'malformed' })).ok`), false, 'malformed replay is rejected before persistence');
+
+  // Test Rematch button from fight result
+  await evaluate("document.querySelector('#result-rematch').click()");
+  await sleep(100);
+  assert.equal(await evaluate("document.querySelector('#fight-result').hidden"), true, 'rematch hides result overlay');
+
+  // Force a second short match to test Watch Replay button
+  await evaluate(`(() => {
+    const fm = window.__app.fightMode;
+    fm.sim.matchStatus = 'fighting';
+    fm.sim.clock.resume();
+    fm.sim.roundDurationTicks = fm.sim.clock.tick + 1;
+    fm.sim.clock.accumulator = 0;
+    fm.sim.update(fm.sim.clock.dt * 2);
+    fm.update(0);
+  })()`);
+  await sleep(50);
 
   // Test Watch Replay button from fight result
   await evaluate("document.querySelector('#replay-watch-last').click()");
@@ -263,7 +302,7 @@ try {
   assert.ok(await evaluate("document.querySelectorAll('.history-item-actions').length >= 1"), 'matching replay exposes watch/export actions');
   await evaluate(`(() => {
     const replays = JSON.parse(localStorage.getItem('robot-foundry.replays.v1') || '[]');
-    if (replays[0]) replays[0].matchId = 'unrelated-match-id';
+    replays.forEach(r => r.matchId = 'unrelated-match-id');
     localStorage.setItem('robot-foundry.replays.v1', JSON.stringify(replays));
     document.querySelector('#btn-close-history').click();
     window.__app.openHistory();
@@ -273,9 +312,14 @@ try {
   await evaluate("document.querySelector('#btn-close-history').click()");
   await sleep(50);
 
-  // Return to Fight Mode to test reset & coaching
+  // Return to Fight Mode via VS Screen to test reset & coaching
   await evaluate("document.querySelector('#nav-fight').click()");
-  await sleep(150);
+  await sleep(100);
+  await evaluate("document.querySelector('#vs-start-fight').click()");
+  for (let i = 0; i < 30; i++) {
+    if (await evaluate("window.__app.mode === 'fight' && Boolean(window.__app.fightMode)")) break;
+    await sleep(50);
+  }
 
   await evaluate("document.querySelector('#fight-reset').click()");
   await sleep(120);

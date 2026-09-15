@@ -1,3 +1,6 @@
+import { getRobotDefinition } from '../robots/robotCatalog.js';
+import { resolveMatchOutcome } from '../match/MatchSetup.js';
+
 // ── icon system (inline SVG, no external deps) ─────────────────
 const ICONS = {
   cube:    '<path d="m12 3 9 5v8l-9 5-9-5V8l9-5Z"/><path d="m3 8 9 5 9-5M12 13v8M7.5 5.5l9 5"/>',
@@ -132,11 +135,35 @@ export class CombatHUD {
               <div class="fight-posture-track" title="Posture"><div class="fight-posture-fill" id="fight-pos-a"></div></div>
             </div>
             <div class="fight-status" id="fight-status">FIGHTING</div>
-            <div class="fight-result" id="fight-result" hidden>
-              <span id="fight-result-text"></span>
-              <button id="replay-watch-last" type="button">WATCH REPLAY</button>
-              <button id="replay-export" type="button">EXPORT REPLAY</button>
-              <button id="replay-import-btn" type="button">IMPORT</button>
+            <div class="fight-result" id="fight-result" hidden aria-label="Match outcome dialog">
+              <div class="result-banner banner-victory" id="result-banner">
+                <div class="result-badge-wrap">
+                  <span class="result-kicker">KẾT QUẢ TRẬN ĐẤU // MATCH OUTCOME</span>
+                  <h2 class="result-title" id="result-title">VICTORY // CHIẾN THẮNG</h2>
+                  <span class="result-subtext" id="result-subtext">KNOCKOUT VICTORY · ĐO VÁN</span>
+                  <span id="fight-result-text" class="result-legacy-text" style="display:none"></span>
+                </div>
+
+                <!-- Primary Game Loop Buttons -->
+                <div class="result-main-actions">
+                  <button id="result-rematch" class="btn-result-primary" type="button">
+                    ↺ ĐẤU LẠI (REMATCH)
+                  </button>
+                  <button id="result-change-opponent" class="btn-result-secondary" type="button">
+                    ⚔ ĐỔI ĐỐI THỦ
+                  </button>
+                  <button id="result-back-lab" class="btn-result-secondary" type="button">
+                    🏠 VỀ LAB / HANGAR
+                  </button>
+                </div>
+
+                <!-- Secondary Replay Actions -->
+                <div class="result-replay-actions">
+                  <button id="replay-watch-last" class="btn-result-tiny" type="button">🎬 WATCH REPLAY</button>
+                  <button id="replay-export" class="btn-result-tiny" type="button">💾 EXPORT REPLAY</button>
+                  <button id="replay-import-btn" class="btn-result-tiny" type="button">📂 IMPORT</button>
+                </div>
+              </div>
             </div>
             <div class="fight-bar fight-bar-b">
               <span class="fight-name" id="fight-name-b">FIGHTER B</span>
@@ -147,7 +174,7 @@ export class CombatHUD {
           </div>
           <section class="coach-panel" id="coach-panel" aria-label="Live coach controls" style="display:none">
             <div class="coach-panel-head">
-              <span class="coach-kicker">LIVE COACH / REACTIVE ONLY</span>
+              <span class="coach-kicker" id="coach-kicker">LIVE COACH / REACTIVE ONLY</span>
               <span class="coach-privacy">NO AUDIO SAVED</span>
             </div>
             <div class="coach-controls">
@@ -214,6 +241,86 @@ export class CombatHUD {
             </div>
           </div>
           <input type="file" id="replay-file-input" accept=".json,application/json" style="display:none" />
+
+          <!-- VS Setup overlay (character & opponent selection) -->
+          <div class="vs-setup" id="vs-setup" style="display:none" aria-label="Versus match setup">
+            <div class="vs-setup-inner">
+              <div class="vs-header">
+                <div class="vs-header-titles">
+                  <span class="vs-kicker"><span class="status-dot"></span> MATCH SETUP // ĐỐI ĐẦU</span>
+                  <h2 class="vs-heading">CHỌN ĐẤU THỦ</h2>
+                </div>
+                <button class="vs-close-btn" id="vs-close-btn" type="button" aria-label="Close setup">✕</button>
+              </div>
+
+              <div class="vs-roster-row">
+                <!-- Player Side (Left) -->
+                <div class="vs-fighter-card vs-card-player" id="vs-card-p1">
+                  <div class="vs-role-badge badge-p1"><span class="badge-dot"></span> P1 // YOU (BẠN)</div>
+                  <div class="vs-portrait-box">
+                    <img class="vs-portrait-img" id="vs-portrait-p1" alt="P1 Robot Portrait" />
+                  </div>
+                  <div class="vs-meta">
+                    <span class="vs-series" id="vs-series-p1">F-09</span>
+                    <strong class="vs-name" id="vs-name-p1">FORGE // TITAN</strong>
+                    <span class="vs-archetype" id="vs-archetype-p1">HEAVY BRAWLER</span>
+                    <p class="vs-tagline" id="vs-tagline-p1">Built to walk through the hit.</p>
+                  </div>
+                  <div class="vs-stat-meters" id="vs-stats-p1">
+                    <div class="vs-stat-row"><span class="vs-stat-label">PWR</span><div class="vs-stat-bar"><div class="vs-stat-fill" id="vs-p1-pwr"></div></div></div>
+                    <div class="vs-stat-row"><span class="vs-stat-label">SPD</span><div class="vs-stat-bar"><div class="vs-stat-fill" id="vs-p1-spd"></div></div></div>
+                    <div class="vs-stat-row"><span class="vs-stat-label">GRD</span><div class="vs-stat-bar"><div class="vs-stat-fill" id="vs-p1-grd"></div></div></div>
+                    <div class="vs-stat-row"><span class="vs-stat-label">ARM</span><div class="vs-stat-bar"><div class="vs-stat-fill" id="vs-p1-arm"></div></div></div>
+                  </div>
+                </div>
+
+                <!-- Center VS Badge -->
+                <div class="vs-center-col">
+                  <div class="vs-emblem-circle">
+                    <span class="vs-emblem-text">VS</span>
+                  </div>
+                  <div class="vs-match-info">
+                    <span class="vs-info-tag">1 ROUND · 180S</span>
+                    <span class="vs-info-tag">AUTONOMOUS</span>
+                    <span class="vs-info-tag">LIVE COACHING</span>
+                  </div>
+                </div>
+
+                <!-- Opponent Side (Right) -->
+                <div class="vs-fighter-card vs-card-cpu" id="vs-card-cpu">
+                  <div class="vs-role-badge badge-cpu"><span class="badge-dot"></span> CPU // OPPONENT (ĐỐI THỦ)</div>
+                  <div class="vs-opponent-picker">
+                    <label for="vs-opponent-select" class="vs-picker-label">CHỌN ĐỐI THỦ:</label>
+                    <div class="vs-picker-actions">
+                      <select id="vs-opponent-select" class="vs-opponent-select" aria-label="Select CPU opponent"></select>
+                      <button id="vs-random-btn" class="vs-random-btn" type="button" title="Chọn đối thủ ngẫu nhiên">🎲 RANDOM</button>
+                    </div>
+                  </div>
+                  <div class="vs-portrait-box">
+                    <img class="vs-portrait-img" id="vs-portrait-cpu" alt="CPU Robot Portrait" />
+                  </div>
+                  <div class="vs-meta">
+                    <span class="vs-series" id="vs-series-cpu">A-12</span>
+                    <strong class="vs-name" id="vs-name-cpu">AEGIS // PRIME</strong>
+                    <span class="vs-archetype" id="vs-archetype-cpu">DEFENSIVE SENTINEL</span>
+                    <p class="vs-tagline" id="vs-tagline-cpu">Hold the line. Own the exchange.</p>
+                  </div>
+                  <div class="vs-stat-meters" id="vs-stats-cpu">
+                    <div class="vs-stat-row"><span class="vs-stat-label">PWR</span><div class="vs-stat-bar"><div class="vs-stat-fill" id="vs-cpu-pwr"></div></div></div>
+                    <div class="vs-stat-row"><span class="vs-stat-label">SPD</span><div class="vs-stat-bar"><div class="vs-stat-fill" id="vs-cpu-spd"></div></div></div>
+                    <div class="vs-stat-row"><span class="vs-stat-label">GRD</span><div class="vs-stat-bar"><div class="vs-stat-fill" id="vs-cpu-grd"></div></div></div>
+                    <div class="vs-stat-row"><span class="vs-stat-label">ARM</span><div class="vs-stat-bar"><div class="vs-stat-fill" id="vs-cpu-arm"></div></div></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Bottom Actions -->
+              <div class="vs-actions-bar">
+                <button class="vs-back-btn" id="vs-back-btn" type="button">✕ QUAY LẠI LAB</button>
+                <button class="vs-fight-btn" id="vs-start-fight" type="button">⚔ BẮT ĐẦU TRẬN ĐẤU (FIGHT!)</button>
+              </div>
+            </div>
+          </div>
 
           <span class="stage-corner corner-tl"></span>
           <span class="stage-corner corner-tr"></span>
@@ -474,9 +581,43 @@ export class CombatHUD {
     el('nav-fight').addEventListener('click', () => {
       options.onFightToggle?.();
     });
+
+    // VS Setup controls
+    el('vs-close-btn')?.addEventListener('click', () => {
+      this._vsCallbacks?.onCancel?.();
+    });
+    el('vs-back-btn')?.addEventListener('click', () => {
+      this._vsCallbacks?.onCancel?.();
+    });
+    el('vs-start-fight')?.addEventListener('click', () => {
+      this._vsCallbacks?.onStartFight?.(this._vsOpponentDefId);
+    });
+    el('vs-opponent-select')?.addEventListener('change', e => {
+      this._vsOpponentDefId = e.target.value;
+      this._updateVsCards();
+      this._vsCallbacks?.onSelectOpponent?.(this._vsOpponentDefId);
+    });
+    el('vs-random-btn')?.addEventListener('click', () => {
+      if (this._vsCallbacks?.onRandomOpponent) {
+        this._vsOpponentDefId = this._vsCallbacks.onRandomOpponent();
+        const select = this._el('vs-opponent-select');
+        if (select) select.value = this._vsOpponentDefId;
+        this._updateVsCards();
+      }
+    });
     el('fight-reset').addEventListener('click', () => {
       options.onFightReset?.();
       this.showToast('FIGHT RESET');
+    });
+    el('result-rematch')?.addEventListener('click', () => {
+      options.onFightReset?.();
+      this.showToast('REMATCH STARTED · ĐẤU LẠI');
+    });
+    el('result-change-opponent')?.addEventListener('click', () => {
+      options.onChangeOpponent?.();
+    });
+    el('result-back-lab')?.addEventListener('click', () => {
+      options.onBackToLab?.();
     });
     el('replay-export').addEventListener('click', () => options.onReplayExport?.());
     el('coach-language').addEventListener('change', event => options.onCoachLanguage?.(event.target.value));
@@ -704,12 +845,106 @@ export class CombatHUD {
 
   // ── Portrait thumbnails ─────────────────────────────────────────
   setPortrait(index, dataUrl) {
+    if (!this._portraits) this._portraits = [];
+    this._portraits[index] = dataUrl;
     const img = document.getElementById(`thumb-${index}`);
     if (img) img.src = dataUrl;
+    this._syncVsPortraits();
+  }
+
+  // ── VS Setup UI ──────────────────────────────────────────────────
+  showVsSetup({ playerDefId, opponentDefId, catalog, onSelectOpponent, onRandomOpponent, onStartFight, onCancel }) {
+    this._vsCatalog = catalog;
+    this._vsPlayerDefId = playerDefId;
+    this._vsOpponentDefId = opponentDefId;
+    this._vsCallbacks = { onSelectOpponent, onRandomOpponent, onStartFight, onCancel };
+
+    const vsEl = this._el('vs-setup');
+    if (!vsEl) return;
+
+    // Populate opponent dropdown
+    const select = this._el('vs-opponent-select');
+    if (select) {
+      select.innerHTML = '';
+      catalog.forEach(robot => {
+        const opt = document.createElement('option');
+        opt.value = robot.id;
+        opt.textContent = `${robot.shortName} (${robot.archetype})`;
+        if (robot.id === opponentDefId) opt.selected = true;
+        select.appendChild(opt);
+      });
+    }
+
+    this._updateVsCards();
+
+    vsEl.style.display = 'flex';
+    document.querySelector('.site-main')?.classList.add('vs-setup-active');
+  }
+
+  hideVsSetup() {
+    const vsEl = this._el('vs-setup');
+    if (vsEl) vsEl.style.display = 'none';
+    document.querySelector('.site-main')?.classList.remove('vs-setup-active');
+  }
+
+  _updateVsCards() {
+    if (!this._vsCatalog) return;
+    const p1Def = this._vsCatalog.find(r => r.id === this._vsPlayerDefId) || this._vsCatalog[0];
+    const cpuDef = this._vsCatalog.find(r => r.id === this._vsOpponentDefId) || this._vsCatalog[1];
+
+    this._renderVsCard('p1', p1Def);
+    this._renderVsCard('cpu', cpuDef);
+    this._syncVsPortraits();
+  }
+
+  _renderVsCard(prefix, def) {
+    if (!def) return;
+    const series = this._el(`vs-series-${prefix}`);
+    const name = this._el(`vs-name-${prefix}`);
+    const archetype = this._el(`vs-archetype-${prefix}`);
+    const tagline = this._el(`vs-tagline-${prefix}`);
+    const card = this._el(`vs-card-${prefix}`);
+
+    if (series) series.textContent = def.series || '';
+    if (name) name.textContent = def.name || def.shortName;
+    if (archetype) archetype.textContent = def.archetype || '';
+    if (tagline) tagline.textContent = def.tagline || '';
+    if (card && def.colors?.accent) {
+      card.style.setProperty('--card-accent', `#${def.colors.accent.toString(16).padStart(6, '0')}`);
+    }
+
+    const stats = def.stats || {};
+    const pwr = this._el(`vs-${prefix}-pwr`);
+    const spd = this._el(`vs-${prefix}-spd`);
+    const grd = this._el(`vs-${prefix}-grd`);
+    const arm = this._el(`vs-${prefix}-arm`);
+    if (pwr) pwr.style.width = `${stats.power || 50}%`;
+    if (spd) spd.style.width = `${stats.speed || 50}%`;
+    if (grd) grd.style.width = `${stats.guard || 50}%`;
+    if (arm) arm.style.width = `${stats.armor || 50}%`;
+  }
+
+  _syncVsPortraits() {
+    if (!this._vsCatalog) return;
+    const p1Idx = this._vsCatalog.findIndex(r => r.id === this._vsPlayerDefId);
+    const cpuIdx = this._vsCatalog.findIndex(r => r.id === this._vsOpponentDefId);
+
+    const p1Img = this._el('vs-portrait-p1');
+    const cpuImg = this._el('vs-portrait-cpu');
+
+    if (p1Img && p1Idx >= 0) {
+      const src = this._portraits?.[p1Idx] || document.getElementById(`thumb-${p1Idx}`)?.src;
+      if (src) p1Img.src = src;
+    }
+    if (cpuImg && cpuIdx >= 0) {
+      const src = this._portraits?.[cpuIdx] || document.getElementById(`thumb-${cpuIdx}`)?.src;
+      if (src) cpuImg.src = src;
+    }
   }
 
   // ── Fight mode UI ───────────────────────────────────────────────
-  setFightMode(active) {
+  setFightMode(active, options = {}) {
+    this.hideVsSetup();
     // Toggle visibility of showcase vs fight elements
     document.querySelector('.site-main')?.classList.toggle('fight-mode-active', active);
     const showcaseEls = document.querySelectorAll('.dossier, .motion-panel, .page-heading, aside');
@@ -731,6 +966,26 @@ export class CombatHUD {
     if (playback) playback.style.display = active ? 'none' : '';
     const coachPanel = this._el('coach-panel');
     if (coachPanel) coachPanel.style.display = active ? '' : 'none';
+
+    // Update Coach context to player robot
+    const matchSetup = options.matchSetup;
+    const playerDefId = matchSetup?.playerDefId || this._vsPlayerDefId || 'forge-titan';
+    const playerDef = getRobotDefinition(playerDefId);
+    const shortName = playerDef?.shortName || 'TITAN';
+
+    const kicker = this._el('coach-kicker');
+    if (kicker) {
+      kicker.textContent = active
+        ? `COACHING ${shortName} (YOU) · CHỈ ĐẠO CHIẾN THUẬT`
+        : 'LIVE COACH / REACTIVE ONLY';
+    }
+    const coachInput = this._el('coach-input');
+    if (coachInput) {
+      coachInput.placeholder = active
+        ? `Ra lệnh cho ${shortName}: Jab him / Giữ khoảng cách...`
+        : 'Jab him / Giữ khoảng cách';
+    }
+
     if (!active) this.setCoachFeedback('TEXT READY · ROBOT AUTONOMOUS');
   }
 
@@ -1002,7 +1257,7 @@ export class CombatHUD {
     feedback.dataset.tone = tone;
   }
 
-  updateFightHUD(state) {
+  updateFightHUD(state, matchSetup = null) {
     if (!state) return;
     const { a, b, matchStatus, winnerId } = state;
     const timeoutCount = this._el('timeout-count');
@@ -1033,8 +1288,27 @@ export class CombatHUD {
 
     const nameA = this._el('fight-name-a');
     const nameB = this._el('fight-name-b');
-    if (nameA) nameA.textContent = `${a.definitionId.replace(/_/g, ' ').toUpperCase()} · ${a.health}HP`;
-    if (nameB) nameB.textContent = `${b.definitionId.replace(/_/g, ' ').toUpperCase()} · ${b.health}HP`;
+    const defIdA = matchSetup?.playerDefId || a.definitionId.replace(/_/g, '-');
+    const defIdB = matchSetup?.opponentDefId || b.definitionId.replace(/_/g, '-');
+    const defA = getRobotDefinition(defIdA);
+    const defB = getRobotDefinition(defIdB);
+    const shortA = defA?.shortName || defIdA.replace(/_/g, ' ').toUpperCase();
+    const shortB = defB?.shortName || defIdB.replace(/_/g, ' ').toUpperCase();
+
+    if (nameA) {
+      nameA.innerHTML = `<span class="fight-badge badge-you">YOU</span> <strong class="fighter-label-name">${shortA}</strong> · ${a.health}HP`;
+      const barA = nameA.closest('.fight-bar-a');
+      if (barA && defA?.colors?.accent) {
+        barA.style.setProperty('--bar-accent', `#${defA.colors.accent.toString(16).padStart(6, '0')}`);
+      }
+    }
+    if (nameB) {
+      nameB.innerHTML = `<span class="fight-badge badge-cpu">CPU</span> <strong class="fighter-label-name">${shortB}</strong> · ${b.health}HP`;
+      const barB = nameB.closest('.fight-bar-b');
+      if (barB && defB?.colors?.accent) {
+        barB.style.setProperty('--bar-accent', `#${defB.colors.accent.toString(16).padStart(6, '0')}`);
+      }
+    }
 
     if (status) {
       if (matchStatus === 'ko') {
@@ -1057,11 +1331,30 @@ export class CombatHUD {
 
     const result = this._el('fight-result');
     const resultText = this._el('fight-result-text');
+    const resultTitle = this._el('result-title');
+    const resultSubtext = this._el('result-subtext');
+    const resultBanner = this._el('result-banner');
+
     if (result) {
       if (state.matchResult) {
-        const winner = state.matchResult.winnerId?.replace(/_/g, ' ').toUpperCase();
-        const reason = state.matchResult.reason === 'ko' ? 'KNOCKOUT' : state.matchResult.reason === 'time' ? 'DECISION' : 'DRAW';
-        if (resultText) resultText.textContent = winner ? `${reason} · ${winner}` : reason;
+        const setup = matchSetup || {
+          playerDefId: a.definitionId.replace(/_/g, '-'),
+          opponentDefId: b.definitionId.replace(/_/g, '-'),
+          playerRole: 'fighter_a',
+          opponentRole: 'fighter_b',
+        };
+        const outcome = resolveMatchOutcome(state.matchResult, setup);
+
+        if (resultTitle) resultTitle.textContent = `${outcome.title} // ${outcome.headline}`;
+        if (resultSubtext) resultSubtext.textContent = outcome.subtext;
+        if (resultBanner) {
+          resultBanner.className = `result-banner banner-${outcome.outcome}`;
+        }
+        if (resultText) {
+          const winner = state.matchResult.winnerId?.replace(/_/g, ' ').toUpperCase();
+          const reason = state.matchResult.reason === 'ko' ? 'KNOCKOUT' : state.matchResult.reason === 'time' ? 'DECISION' : 'DRAW';
+          resultText.textContent = winner ? `${reason} · ${winner}` : reason;
+        }
         result.hidden = false;
       } else {
         result.hidden = true;

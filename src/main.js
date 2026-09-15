@@ -14,6 +14,7 @@ import { RobotFactory } from './robots/RobotFactory.js';
 import { ROBOT_CATALOG, getRobotDefinition } from './robots/robotCatalog.js';
 import { MatchPersistence } from './persistence/MatchPersistence.js';
 import { ReplayPlayer } from './match/ReplayPlayer.js';
+import { createMatchSetup, pickRandomOpponent, resolveFighterLabels, resolveMatchOutcome } from './match/MatchSetup.js';
 
 class RobotFoundryApp {
   constructor() {
@@ -30,10 +31,12 @@ class RobotFoundryApp {
     this.reducedMotion = settings.reducedMotion || matchMedia('(prefers-reduced-motion: reduce)').matches;
     this._lastSavedResultKey = '';
     this.activeRobotId = ROBOT_CATALOG[0].id;
-    /** @type {'showcase'|'fight'|'replay'} */
+    /** @type {'showcase'|'vs_setup'|'fight'|'replay'} */
     this.mode = 'showcase';
     this.fightMode = null;
     this.replayPlayer = null;
+    this.matchSetup = null;
+    this._selectedOpponentId = null;
     this._coachRequestVersion = 0;
     this._timeoutDraft = null;
     this._timeoutPlaybookDraft = [];
@@ -85,6 +88,11 @@ class RobotFoundryApp {
       onGridToggle:    visible  => { this.gridVisible = visible; this.persistence.saveSettings({ gridVisible: visible }); this.studio.setGridVisible(visible); },
       onFightToggle:   ()       => this.toggleFightMode(),
       onFightReset:    ()       => this.resetFightMode(),
+      onChangeOpponent: ()      => {
+        this.exitFightMode();
+        this.openVsSetup();
+      },
+      onBackToLab:     ()       => this.exitFightMode(),
       onCoachText:     (text, language) => this.handleCoachText(text, language),
       onCoachLanguage: language => { this.persistence.saveSettings({ language }); this.voiceCoach?.setLanguage(language); },
       onVoiceToggle:   () => this.voiceCoach?.toggle(),
@@ -687,15 +695,61 @@ class RobotFoundryApp {
   // ── Fight mode ──────────────────────────────────────────────────────
   toggleFightMode() {
     if (this.mode === 'showcase') {
-      this.enterFightMode();
+      this.openVsSetup();
+    } else if (this.mode === 'vs_setup') {
+      this.closeVsSetup();
     } else {
       this.exitFightMode();
     }
   }
 
-  enterFightMode({ defIdA = 'forge-titan', defIdB = 'aegis-prime', review = false } = {}) {
+  openVsSetup() {
+    if (this.mode === 'fight' || this.mode === 'replay') return;
+    this.mode = 'vs_setup';
+    const playerDefId = this.activeRobotId || 'forge-titan';
+    if (!this._selectedOpponentId || this._selectedOpponentId === playerDefId) {
+      this._selectedOpponentId = pickRandomOpponent(playerDefId, ROBOT_CATALOG);
+    }
+    this.hud.showVsSetup({
+      playerDefId,
+      opponentDefId: this._selectedOpponentId,
+      catalog: ROBOT_CATALOG,
+      onSelectOpponent: (opponentId) => {
+        this._selectedOpponentId = opponentId;
+      },
+      onRandomOpponent: () => {
+        this._selectedOpponentId = pickRandomOpponent(this.activeRobotId, ROBOT_CATALOG);
+        return this._selectedOpponentId;
+      },
+      onStartFight: (opponentId) => {
+        const opp = opponentId || this._selectedOpponentId;
+        this.closeVsSetup();
+        this.enterFightMode({
+          defIdA: this.activeRobotId,
+          defIdB: opp,
+        });
+      },
+      onCancel: () => {
+        this.closeVsSetup();
+      },
+    });
+  }
+
+  closeVsSetup() {
+    if (this.mode === 'vs_setup') {
+      this.mode = 'showcase';
+    }
+    this.hud.hideVsSetup();
+  }
+
+  enterFightMode({ defIdA, defIdB, review = false } = {}) {
+    this.closeVsSetup();
     this._lastSavedResultKey = '';
     this.mode = 'fight';
+
+    const resolvedA = defIdA || this.activeRobotId || 'forge-titan';
+    const resolvedB = defIdB || this._selectedOpponentId || (resolvedA === 'forge-titan' ? 'aegis-prime' : 'forge-titan');
+    this.matchSetup = createMatchSetup({ playerDefId: resolvedA, opponentDefId: resolvedB });
 
     // Remove showcase fighter
     if (this.fighter) {
@@ -709,11 +763,11 @@ class RobotFoundryApp {
 
     // Create fight mode with two robots
     this.fightMode = new FightMode(this.scene, {
-      defIdA,
-      defIdB,
+      defIdA: resolvedA,
+      defIdB: resolvedB,
       seed: this._testSeed,
       onStateChange: (state) => {
-        this.hud.updateFightHUD(state);
+        this.hud.updateFightHUD(state, this.matchSetup);
         if (!review && state.matchResult) this._persistMatchResult(state);
       },
     });
@@ -728,12 +782,15 @@ class RobotFoundryApp {
     this.camera.lookAt(0, 1.2, 0);
     this.cameraController.controls.update(0);
 
-    this.hud.showToast(review ? 'ANIMATOR REVIEW — Volt vs Aegis · NOT A MATCH' : `FIGHT MODE — ${getRobotDefinition(defIdA).shortName} vs ${getRobotDefinition(defIdB).shortName}`);
+    const labels = resolveFighterLabels(this.matchSetup, ROBOT_CATALOG);
+    this.hud.showToast(review ? 'ANIMATOR REVIEW — Volt vs Aegis · NOT A MATCH' : `FIGHT MODE — ${labels.player.shortName} (YOU) vs ${labels.opponent.shortName} (CPU)`);
   }
 
   resetFightMode() {
     this._coachRequestVersion++;
     this._lastSavedResultKey = '';
+    const resultEl = document.getElementById('fight-result');
+    if (resultEl) resultEl.hidden = true;
     this.fightMode?.reset();
     this.hud.closeTimeoutEditor();
     this._timeoutDraft = null;
@@ -741,6 +798,8 @@ class RobotFoundryApp {
   }
 
   exitFightMode() {
+    this.closeVsSetup();
+    this.matchSetup = null;
     this._coachRequestVersion++;
     if (this.fightMode?.timeouts?.active) this.fightMode.cancelTimeout();
     this.hud.closeTimeoutEditor();

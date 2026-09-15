@@ -27,16 +27,16 @@
     },
     "alphaPixels": 4101,
     "variance": 228,
-    "colorBuckets": 92,
+    "colorBuckets": 91,
     "metrics": {
-      "colorBuckets": 153,
+      "colorBuckets": 149,
       "colorEntropyBits": 2.71,
       "edgeDensity": 0.139,
       "luminance": {
         "mean": 228.1,
-        "p5": 203.4,
+        "p5": 203.7,
         "p95": 248.9,
-        "contrast": 45.4
+        "contrast": 45.1
       },
       "dominantColorShare": 0.462,
       "nonBackgroundShare": 0.538

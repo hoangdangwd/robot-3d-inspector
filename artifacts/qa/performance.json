@@ -1,5 +1,5 @@
 {
-  "url": "http://127.0.0.1:5235",
+  "url": "http://127.0.0.1:5188",
   "environment": "Edge headless / SwiftShader; functional timing evidence, not hardware benchmark",
   "targetViewport": {
     "width": 1440,
@@ -7,16 +7,16 @@
     "deviceScaleFactor": 1
   },
   "metrics": {
-    "durationMs": 2012.5,
+    "durationMs": 2105.39999999851,
     "frames": 12,
-    "observedFps": 5.962732919254658,
-    "rendererCalls": 332,
-    "triangles": 61918,
+    "observedFps": 5.699629524084968,
+    "rendererCalls": 336,
+    "triangles": 62080,
     "lines": 98,
     "points": 0,
-    "geometries": 146,
+    "geometries": 148,
     "textures": 4,
-    "simulationTick": 85,
+    "simulationTick": 78,
     "simulationStatus": "fighting"
   },
   "budgets": {

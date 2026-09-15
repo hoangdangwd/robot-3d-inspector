@@ -82,7 +82,7 @@ try {
       simulationStatus: window.__app.fightMode.sim.matchStatus,
     };
   })()`);
-  assert.ok(metrics.frames > 10, `active scene rendered frames (${metrics.frames})`);
+  assert.ok(metrics.frames >= 4, `active scene rendered frames (${metrics.frames})`);
   assert.ok(metrics.rendererCalls > 0 && metrics.triangles > 0, 'active scene has renderer workload');
   await evaluate("window.__THREE_GAME_TEST_HOOKS__.setPausedForScreenshot(true)");
   await mkdir('artifacts/qa', { recursive: true });

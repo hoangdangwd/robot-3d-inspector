@@ -1196,8 +1196,38 @@ dialog p {
   font-family: 'Barlow Condensed', sans-serif;
   pointer-events: auto;
 }
+.fight-bar-a {
+  border-left: 3px solid var(--bar-accent, #2d8cff);
+}
+.fight-bar-b {
+  border-right: 3px solid var(--bar-accent, #e5288f);
+}
+.fight-badge {
+  display: inline-block;
+  font: 700 9px var(--mono);
+  letter-spacing: .06em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.fight-badge.badge-you {
+  background: #2d8cff;
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(45, 140, 255, 0.45);
+}
+.fight-badge.badge-cpu {
+  background: #e5288f;
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(229, 40, 143, 0.45);
+}
+.fighter-label-name {
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 11px;
+}
 .fight-name {
-  display: block; font-size: 10px; letter-spacing: .08em;
+  display: flex; align-items: center; font-size: 10px; letter-spacing: .08em;
   text-transform: uppercase; color: var(--muted); margin-bottom: 4px;
 }
 .fight-health-track, .fight-stamina-track, .fight-posture-track {
@@ -1228,15 +1258,179 @@ dialog p {
 .fight-status.fight-ko {
   color: #d33; font-weight: 700; font-size: 14px;
 }
+/* ── Fight Result & Victory / Defeat Modal ────────────────────── */
 .fight-result {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  z-index: 4; padding: 8px 14px; border: 1px solid rgba(210, 60, 45, .5);
-  background: rgba(20, 18, 16, .9); color: #f2e9dc;
-  font-family: 'Barlow Condensed', sans-serif; font-size: 18px;
-  letter-spacing: .12em; text-transform: uppercase; white-space: nowrap;
-  display: flex; gap: 12px; align-items: center;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 15;
+  width: 90%;
+  max-width: 460px;
+  box-sizing: border-box;
+  pointer-events: auto;
 }
-.fight-result button { font-size: 9px; padding: 4px 7px; letter-spacing: .08em; }
+
+.fight-result[hidden] {
+  display: none !important;
+}
+
+.result-banner {
+  background: rgba(18, 20, 24, 0.96);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65);
+  animation: resultSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes resultSlideIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.result-banner.banner-victory {
+  border-top: 4px solid #2a8c4a;
+  box-shadow: 0 0 30px rgba(42, 140, 74, 0.4), 0 16px 40px rgba(0, 0, 0, 0.65);
+}
+.result-banner.banner-victory .result-title {
+  color: #4ade80;
+  text-shadow: 0 0 20px rgba(74, 222, 128, 0.5);
+}
+
+.result-banner.banner-defeat {
+  border-top: 4px solid #e03a1a;
+  box-shadow: 0 0 30px rgba(224, 58, 26, 0.4), 0 16px 40px rgba(0, 0, 0, 0.65);
+}
+.result-banner.banner-defeat .result-title {
+  color: #f87171;
+  text-shadow: 0 0 20px rgba(248, 113, 113, 0.5);
+}
+
+.result-banner.banner-draw {
+  border-top: 4px solid #e0a820;
+  box-shadow: 0 0 30px rgba(224, 168, 32, 0.4), 0 16px 40px rgba(0, 0, 0, 0.65);
+}
+.result-banner.banner-draw .result-title {
+  color: #fbbf24;
+}
+
+.result-badge-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 16px;
+  width: 100%;
+}
+
+.result-kicker {
+  font: 9px var(--mono);
+  letter-spacing: .14em;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.result-title {
+  font-family: var(--cond);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  margin: 2px 0 4px 0;
+}
+
+.result-subtext {
+  font: 11px var(--mono);
+  font-weight: 600;
+  letter-spacing: .08em;
+  color: #ffde59;
+  text-transform: uppercase;
+}
+
+.result-main-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.btn-result-primary {
+  background: linear-gradient(135deg, #e03a1a 0%, #ff6a00 100%);
+  border: 0;
+  color: #ffffff;
+  font-family: var(--cond);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: 10px 18px;
+  border-radius: 5px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(224, 58, 26, 0.4);
+  transition: all .15s;
+  text-align: center;
+}
+
+.btn-result-primary:hover {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+}
+
+.btn-result-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+  font-family: var(--cond);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: 9px 16px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all .15s;
+  text-align: center;
+}
+
+.btn-result-secondary:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.result-replay-actions {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  justify-content: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 10px;
+}
+
+.btn-result-tiny {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.7);
+  font: 8px var(--mono);
+  padding: 5px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+
+.btn-result-tiny:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
 .coach-panel {
   position: absolute;
   left: 12px; right: 12px; bottom: 48px;
@@ -1495,4 +1689,436 @@ dialog p {
   font: 9px var(--mono);
   color: var(--muted);
   border: 1px dashed var(--line);
+}
+
+/* ─── VS Setup Screen ─────────────────────────────────────────── */
+.vs-setup {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  background: rgba(14, 16, 20, 0.95);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: #f5f5ee;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.vs-setup-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 1060px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 16px 20px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.vs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.vs-kicker {
+  font: 9px var(--mono);
+  letter-spacing: .12em;
+  color: #ffde59;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vs-heading {
+  font-family: var(--cond);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #ffffff;
+  margin: 2px 0 0 0;
+}
+
+.vs-close-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.7);
+  font: 14px var(--mono);
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all .15s;
+}
+
+.vs-close-btn:hover {
+  background: rgba(220, 60, 50, 0.7);
+  color: #fff;
+  border-color: #d33;
+}
+
+.vs-roster-row {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+.vs-fighter-card {
+  flex: 1;
+  max-width: 420px;
+  background: rgba(24, 27, 33, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.vs-card-player {
+  border-top: 3px solid #2d8cff;
+}
+
+.vs-card-cpu {
+  border-top: 3px solid #e5288f;
+}
+
+.vs-role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 10px var(--mono);
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 4px;
+  width: fit-content;
+  margin-bottom: 8px;
+}
+
+.badge-p1 {
+  background: rgba(45, 140, 255, 0.18);
+  color: #6bb5ff;
+  border: 1px solid rgba(45, 140, 255, 0.4);
+}
+
+.badge-cpu {
+  background: rgba(229, 40, 143, 0.18);
+  color: #ff80cc;
+  border: 1px solid rgba(229, 40, 143, 0.4);
+}
+
+.vs-opponent-picker {
+  margin-bottom: 8px;
+}
+
+.vs-picker-label {
+  font: 8px var(--mono);
+  letter-spacing: .08em;
+  color: rgba(255, 255, 255, 0.6);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.vs-picker-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.vs-opponent-select {
+  flex: 1;
+  min-width: 0;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  font: 11px var(--mono);
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.vs-opponent-select option {
+  background: #181b21;
+  color: #fff;
+}
+
+.vs-random-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #ffde59;
+  font: 9px var(--mono);
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all .15s;
+}
+
+.vs-random-btn:hover {
+  background: rgba(255, 222, 89, 0.2);
+  border-color: #ffde59;
+}
+
+.vs-portrait-box {
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.08) 0%, rgba(0, 0, 0, 0.4) 100%);
+  border-radius: 6px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.vs-portrait-img {
+  max-height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.6));
+}
+
+.vs-meta {
+  margin-bottom: 10px;
+}
+
+.vs-series {
+  font: 9px var(--mono);
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: .08em;
+}
+
+.vs-name {
+  display: block;
+  font-family: var(--cond);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: #ffffff;
+  margin: 1px 0 3px 0;
+}
+
+.vs-archetype {
+  display: inline-block;
+  font: 10px var(--mono);
+  color: #ffd27a;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.vs-tagline {
+  font: 10px 'DM Sans', sans-serif;
+  color: rgba(255, 255, 255, 0.7);
+  font-style: italic;
+  margin: 4px 0 0 0;
+  line-height: 1.35;
+}
+
+.vs-stat-meters {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.vs-stat-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 8px var(--mono);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.vs-stat-label {
+  width: 26px;
+}
+
+.vs-stat-bar {
+  flex: 1;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.vs-stat-fill {
+  height: 100%;
+  width: 50%;
+  background: var(--card-accent, #2d8cff);
+  border-radius: 3px;
+  transition: width .2s;
+}
+
+.vs-center-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 8px;
+  flex-shrink: 0;
+}
+
+.vs-emblem-circle {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #e03a1a 0%, #ff8a35 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 20px rgba(224, 58, 26, 0.6);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+}
+
+.vs-emblem-text {
+  font-family: var(--cond);
+  font-size: 24px;
+  font-weight: 800;
+  font-style: italic;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+}
+
+.vs-match-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: center;
+}
+
+.vs-info-tag {
+  font: 8px var(--mono);
+  letter-spacing: .08em;
+  color: rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 3px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.vs-actions-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  margin-top: 12px;
+  flex-shrink: 0;
+}
+
+.vs-back-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.85);
+  font-family: var(--cond);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  padding: 10px 18px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+
+.vs-back-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.vs-fight-btn {
+  flex: 1;
+  max-width: 360px;
+  background: linear-gradient(135deg, #e03a1a 0%, #ff6a00 100%);
+  border: 0;
+  color: #ffffff;
+  font-family: var(--cond);
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  padding: 11px 24px;
+  border-radius: 5px;
+  cursor: pointer;
+  box-shadow: 0 4px 18px rgba(224, 58, 26, 0.45);
+  transition: all .15s;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.vs-fight-btn:hover {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(224, 58, 26, 0.65);
+}
+
+/* ── Responsive adjustments for VS Setup ── */
+@media (max-width: 700px) {
+  .vs-setup-inner {
+    padding: 10px 8px;
+  }
+  .vs-roster-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .vs-fighter-card {
+    max-width: 100%;
+    padding: 10px 12px;
+  }
+  .vs-portrait-box {
+    height: 90px;
+    margin-bottom: 6px;
+  }
+  .vs-name {
+    font-size: 18px;
+  }
+  .vs-center-col {
+    flex-direction: row;
+    justify-content: center;
+    gap: 10px;
+    padding: 2px 0;
+  }
+  .vs-emblem-circle {
+    width: 38px;
+    height: 38px;
+  }
+  .vs-emblem-text {
+    font-size: 17px;
+  }
+  .vs-match-info {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .vs-actions-bar {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .vs-fight-btn, .vs-back-btn {
+    width: 100%;
+    max-width: 100%;
+    padding: 10px;
+  }
 }

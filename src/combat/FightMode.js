@@ -31,6 +31,49 @@ function buildAnimMap() {
 const HIT_ANIMS = ['hit_head_left', 'hit_head_right'];
 const BODY_HIT_ANIM = 'hit_body';
 
+/**
+ * Creates a glowing ground ring with a directional chevron to identify the coached player fighter (YOU).
+ * Attached as a child of fighterA.group so it automatically tracks position and facing angle.
+ * @param {object} definition - Robot definition from catalog
+ * @returns {{ group: THREE.Group, material: THREE.MeshBasicMaterial }}
+ */
+function createPlayerMarker(definition) {
+  const markerGroup = new THREE.Group();
+  markerGroup.name = 'player-ground-indicator';
+  markerGroup.position.y = 0.015;
+
+  const accentColor = definition.colors?.accent ?? 0x2d8cff;
+
+  // Outer circular ring on XZ plane
+  const ringGeo = new THREE.RingGeometry(0.72, 0.86, 40);
+  ringGeo.rotateX(-Math.PI / 2);
+
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: accentColor,
+    transparent: true,
+    opacity: 0.75,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+  markerGroup.add(ringMesh);
+
+  // Directional chevron/pointer on XZ plane pointing along forward facing (+Z)
+  const pointerGeo = new THREE.BufferGeometry();
+  const vertices = new Float32Array([
+    0, 0, 1.06,
+    -0.15, 0, 0.86,
+    0.15, 0, 0.86,
+  ]);
+  pointerGeo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+  pointerGeo.computeVertexNormals();
+
+  const pointerMesh = new THREE.Mesh(pointerGeo, ringMat);
+  markerGroup.add(pointerMesh);
+
+  return { group: markerGroup, material: ringMat };
+}
+
 function getOptionalStorage() {
   try { return globalThis.localStorage || null; } catch { return null; }
 }
@@ -91,6 +134,12 @@ export class FightMode {
     this.setPlaybook('fighter_a', playbookA.length ? playbookA : storedA.tactics, playbookA.length ? playbookRevisionA : storedA.revision);
     this.setPlaybook('fighter_b', playbookB.length ? playbookB : storedB.tactics, playbookB.length ? playbookRevisionB : storedB.revision);
 
+    // Ground marker to identify the coached player fighter (YOU)
+    const marker = createPlayerMarker(defA);
+    this.playerMarker = marker.group;
+    this._playerMarkerMat = marker.material;
+    this.fighterA.group.add(this.playerMarker);
+
     // Track last-applied animation to avoid re-triggering
     this._lastAnimA = '';
     this._lastAnimB = '';
@@ -128,6 +177,11 @@ export class FightMode {
 
     // Sync presentation from simulation state
     this._syncPresentation(delta);
+
+    // Subtle breathing pulse on the player ground marker
+    if (this._playerMarkerMat) {
+      this._playerMarkerMat.opacity = 0.65 + 0.18 * Math.sin(this.sim.clock.tick * 0.08);
+    }
 
     // Notify UI
     const stateA = this.sim.getState('fighter_a');
@@ -405,6 +459,15 @@ export class FightMode {
   }
 
   dispose() {
+    if (this.playerMarker) {
+      this.fighterA.group.remove(this.playerMarker);
+      this.playerMarker.traverse(obj => {
+        if (obj.geometry) obj.geometry.dispose();
+        if (obj.material) obj.material.dispose();
+      });
+      this.playerMarker = null;
+      this._playerMarkerMat = null;
+    }
     this.scene.remove(this.fighterA.group);
     this.scene.remove(this.fighterB.group);
     this.fighterA.dispose();

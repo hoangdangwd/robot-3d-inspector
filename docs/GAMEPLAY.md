@@ -921,6 +921,7 @@ Robot vừa là:
 20. Base combat AI vẫn tồn tại bên dưới và không bị tactical script thay thế hoàn toàn.
 21. Cùng một tactic có thể được các robot khác nhau thực thi khác nhau theo personality/stats/capability.
 22. Core skill loop là **observe → hypothesize → coach/program → test → adapt**.
+23. **Match Flow & Player Agency**: Người chơi tự do chọn robot tại Lab/Hangar; màn hình VS Setup cho phép xác nhận robot [YOU] và lựa chọn đối thủ [CPU] (hoặc Random); HUD và sàn đấu 3D hiển thị rõ ràng nhận diện [YOU] (vòng sáng ground ring) và ngữ cảnh Coach; màn hình kết quả thể hiện rõ ràng VICTORY / DEFEAT theo góc nhìn người chơi và cung cấp vòng lặp Rematch, Change Opponent, Return to Lab.
 
 ---
 
