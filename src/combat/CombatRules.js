@@ -6,8 +6,10 @@ export const TICK_RATE = 60;
 export const ROUND_DURATION_TICKS = 10800; // 3 minutes @ 60 Hz
 
 // ── Arena ───────────────────────────────────────────────────────────
-export const ARENA_RADIUS      = 5;
-export const STARTING_DISTANCE = 3;
+// The fight arena is deliberately larger than the showcase plinth. Fighters
+// start with room to read, approach, retreat and circle before contact.
+export const ARENA_RADIUS      = 7;
+export const STARTING_DISTANCE = 5;
 
 // ── Movement ────────────────────────────────────────────────────────
 export const MOVE_SPEED_FORWARD  = 2.5;

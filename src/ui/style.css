@@ -1185,6 +1185,18 @@ dialog p {
   width: 100%;
   min-height: 680px;
 }
+.site-main.fight-mode-active .viewport {
+  background: radial-gradient(ellipse at 50% 38%, #30343b 0%, #171a1f 62%, #0d0f13 100%);
+  border-color: #22262e;
+}
+.site-main.fight-mode-active .viewport-top,
+.site-main.fight-mode-active .watermark,
+.site-main.fight-mode-active .stage-label,
+.site-main.fight-mode-active .view-tools,
+.site-main.fight-mode-active .viewport-bottom,
+.site-main.fight-mode-active .stage-corner {
+  display: none;
+}
 .site-main.vs-setup-active .page-heading,
 .site-main.vs-setup-active aside,
 .site-main.vs-setup-active .motion-panel,

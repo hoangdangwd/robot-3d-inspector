@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import { ShowcaseStudio } from './arena/ShowcaseStudio.js';
+import { FightingStage } from './arena/FightingStage.js';
 import { SoundEngine } from './audio/SoundEngine.js';
 import { FightCameraController } from './camera/FightCameraController.js';
 import { Fighter } from './combat/Fighter.js';
 import { CombatHUD } from './ui/CombatHUD.js';
 import { FightMode } from './combat/FightMode.js';
 import { getAction } from './combat/ActionRegistry.js';
+import { ARENA_RADIUS } from './combat/CombatRules.js';
 import { parseCoachText } from './coaching/LocalCommandParser.js';
 import { VoiceCoachController } from './coaching/VoiceCoachController.js';
 import { validateTactic, validateTacticV2, validatePlaybook } from './tactics/TacticSchema.js';
@@ -34,6 +36,7 @@ class RobotFoundryApp {
     /** @type {'showcase'|'vs_setup'|'fight'|'replay'} */
     this.mode = 'showcase';
     this.fightMode = null;
+    this.fightStage = null;
     this.replayPlayer = null;
     this.matchSetup = null;
     this._selectedOpponentId = null;
@@ -68,7 +71,7 @@ class RobotFoundryApp {
     this.cameraController = new FightCameraController(this.camera, this.renderer.domElement);
     const controls = this.cameraController.controls;
     controls.minDistance    = 2.2;
-    controls.maxDistance    = 14;
+    controls.maxDistance    = 28;
     controls.enablePan      = false;
     controls.autoRotateSpeed = 1.4;
     controls.maxPolarAngle  = Math.PI * 0.51;
@@ -231,7 +234,8 @@ class RobotFoundryApp {
     this.renderer.setSize(w, h, false); // false = don't set canvas style size (CSS owns it)
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    if (this.fighter) this.fitCameraToFighter();
+    if (this.mode === 'fight' || this.mode === 'replay') this.frameFightArena();
+    else if (this.fighter) this.fitCameraToFighter();
   }
 
   // ── Portrait thumbnails ──────────────────────────────────────────
@@ -662,6 +666,7 @@ class RobotFoundryApp {
     }
 
     this.mode = 'replay';
+    this.showFightArena();
     try {
       this.replayPlayer = new ReplayPlayer(this.scene, replayLog, {
         onStateChange: state => this.hud.updateReplayHUD(state),
@@ -669,16 +674,12 @@ class RobotFoundryApp {
     } catch (err) {
       this.hud.showToast(`CANNOT PLAY REPLAY: ${err.message}`);
       this.mode = 'showcase';
+      this.hideFightArena();
       this.switchRobot(this.activeRobotId, false);
       return;
     }
 
-    this.camera.position.set(6.5, 4.0, 8.5);
-    this.cameraController.defaultPos.set(6.5, 4.0, 8.5);
-    this.cameraController.defaultTarget.set(0, 1.2, 0);
-    this.cameraController.controls.target.set(0, 1.2, 0);
-    this.camera.lookAt(0, 1.2, 0);
-    this.cameraController.controls.update(0);
+    this.frameFightArena();
 
     const matchup = `${this.replayPlayer.defA.shortName} vs ${this.replayPlayer.defB.shortName}`;
     this.hud.setReplayMode(true, { matchup });
@@ -691,6 +692,7 @@ class RobotFoundryApp {
       this.replayPlayer = null;
     }
     this.mode = 'showcase';
+    this.hideFightArena();
     this.hud.setReplayMode(false);
     this.switchRobot(this.activeRobotId, false);
     this.fitCameraToFighter();
@@ -764,8 +766,12 @@ class RobotFoundryApp {
       this.fighter = null;
     }
 
+    // Replace the inspection plinth with a dedicated arena whose visible mat
+    // extends beyond the authoritative movement boundary.
+    this.showFightArena();
+
     // Hide showcase UI
-    this.hud.setFightMode(true);
+    this.hud.setFightMode(true, { matchSetup: this.matchSetup });
 
     // Create fight mode with two robots
     this.fightMode = new FightMode(this.scene, {
@@ -781,12 +787,8 @@ class RobotFoundryApp {
     // Camera: wider view to see both fighters
     // Oblique gameplay angle keeps the two fighters readable instead of
     // stacking them on the camera's Z axis.
-    this.camera.position.set(6.5, 4.0, 8.5);
-    this.cameraController.defaultPos.set(6.5, 4.0, 8.5);
-    this.cameraController.defaultTarget.set(0, 1.2, 0);
-    this.cameraController.controls.target.set(0, 1.2, 0);
-    this.camera.lookAt(0, 1.2, 0);
-    this.cameraController.controls.update(0);
+    this.cameraController.setFighters(this.fightMode.fighterA, this.fightMode.fighterB);
+    this.frameFightArena();
 
     const labels = resolveFighterLabels(this.matchSetup, ROBOT_CATALOG);
     this.hud.showToast(review ? 'ANIMATOR REVIEW — Volt vs Aegis · NOT A MATCH' : `FIGHT MODE — ${labels.player.shortName} (YOU) vs ${labels.opponent.shortName} (CPU)`);
@@ -817,7 +819,8 @@ class RobotFoundryApp {
       this.fightMode = null;
     }
 
-    // Restore showcase UI
+    // Restore showcase UI and inspection environment.
+    this.hideFightArena();
     this.hud.setFightMode(false);
 
     // Rebuild showcase fighter
@@ -866,7 +869,48 @@ class RobotFoundryApp {
   }
 
   // ── Camera ───────────────────────────────────────────────────────
+  showFightArena() {
+    if (!this.fightStage) {
+      this.fightStage = new FightingStage(this.scene, {
+        playableRadius: ARENA_RADIUS,
+        stagePadding: 1.5,
+      });
+    }
+    this.fightStage.group.visible = true;
+    this.studio.setVisible(false);
+  }
+
+  hideFightArena() {
+    if (this.fightStage) this.fightStage.group.visible = false;
+    this.studio.setVisible(true);
+  }
+
+  frameFightArena() {
+    const radius = this.fightStage?.stageRadius ?? (ARENA_RADIUS + 1.5);
+    const fov = 40;
+    this.camera.fov = fov;
+    this.camera.updateProjectionMatrix();
+
+    const tangent = Math.tan(THREE.MathUtils.degToRad(fov) / 2);
+    const distance = Math.max(
+      4.2 / tangent,
+      (radius + 0.45) / (tangent * Math.max(this.camera.aspect, 0.55)),
+    ) * 1.08;
+    const target = new THREE.Vector3(0, 0.9, 0);
+    const direction = new THREE.Vector3(0.58, 0.38, 0.72).normalize();
+    const position = target.clone().addScaledVector(direction, distance);
+
+    this.cameraController.defaultPos.copy(position);
+    this.cameraController.defaultTarget.copy(target);
+    this.cameraController.controls.target.copy(target);
+    this.camera.position.copy(position);
+    this.camera.lookAt(target);
+    this.cameraController.controls.update(0);
+  }
+
   fitCameraToFighter() {
+    this.camera.fov = 35;
+    this.camera.updateProjectionMatrix();
     const height   = 2.58;
     const fov      = THREE.MathUtils.degToRad(this.camera.fov);
     const width    = 3.34;
@@ -886,7 +930,8 @@ class RobotFoundryApp {
   }
 
   resetCamera() {
-    this.fitCameraToFighter();
+    if (this.mode === 'fight' || this.mode === 'replay') this.frameFightArena();
+    else this.fitCameraToFighter();
     this.cameraController.resetCamera();
   }
 

@@ -10,6 +10,12 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
  */
 export class ShowcaseStudio {
   constructor(scene, renderer) {
+    // Showcase-only geometry lives under one root so Fight Mode can replace
+    // the inspection plinth with a real arena without rebuilding the scene.
+    this.group = new THREE.Group();
+    this.group.name = 'ShowcaseStudio';
+    scene.add(this.group);
+
     // PBR environment (RoomEnvironment gives soft, studio-light reflections)
     const room = new RoomEnvironment();
     const pmrem = new THREE.PMREMGenerator(renderer);
@@ -51,7 +57,7 @@ export class ShowcaseStudio {
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = -0.20;
     floor.receiveShadow = true;
-    scene.add(floor);
+    this.group.add(floor);
 
     // ── Grid ──────────────────────────────────────────────────────
     this.grid = new THREE.GridHelper(24, 48, 0xb6b9aa, 0xc6c8ba);
@@ -59,7 +65,7 @@ export class ShowcaseStudio {
     const gm = this.grid.material;
     gm.transparent = true;
     gm.opacity = 0.30;
-    scene.add(this.grid);
+    this.group.add(this.grid);
 
     // ── Plinth ────────────────────────────────────────────────────
     const plinth = new THREE.Mesh(
@@ -69,7 +75,7 @@ export class ShowcaseStudio {
     plinth.position.y = -0.09;
     plinth.receiveShadow = true;
     plinth.castShadow    = true;
-    scene.add(plinth);
+    this.group.add(plinth);
 
     const top = new THREE.Mesh(
       new THREE.CylinderGeometry(2.06, 2.06, 0.025, 96),
@@ -77,7 +83,7 @@ export class ShowcaseStudio {
     );
     top.position.y = 0.018;
     top.receiveShadow = true;
-    scene.add(top);
+    this.group.add(top);
 
     // ── Accent ring + ticks ───────────────────────────────────────
     this.accentMat = new THREE.MeshBasicMaterial({ color: 0x89975b });
@@ -89,7 +95,7 @@ export class ShowcaseStudio {
       );
       ring.rotation.x = -Math.PI / 2;
       ring.position.y  = 0.036;
-      scene.add(ring);
+      this.group.add(ring);
     }
 
     const ticks = new THREE.Group();
@@ -101,7 +107,7 @@ export class ShowcaseStudio {
       tick.rotation.y = angle;
       ticks.add(tick);
     }
-    scene.add(ticks);
+    this.group.add(ticks);
 
     // Accent hoop on top of plinth
     this.hoop = new THREE.Mesh(
@@ -110,7 +116,11 @@ export class ShowcaseStudio {
     );
     this.hoop.rotation.x = Math.PI / 2;
     this.hoop.position.y  = -0.075;
-    scene.add(this.hoop);
+    this.group.add(this.hoop);
+  }
+
+  setVisible(visible) {
+    this.group.visible = Boolean(visible);
   }
 
   /** Update the accent colour (per-robot). */

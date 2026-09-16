@@ -117,6 +117,14 @@ try {
     motionPanel: getComputedStyle(document.querySelector('.motion-panel')).display,
     nameA: document.querySelector('#fight-name-a')?.textContent,
     nameB: document.querySelector('#fight-name-b')?.textContent,
+    arena: {
+      hasFightStage: Boolean(window.__app.fightStage),
+      fightStageVisible: window.__app.fightStage?.group.visible,
+      showcaseVisible: window.__app.studio?.group?.visible,
+      stageRadius: window.__app.fightStage?.stageRadius,
+      playableRadius: window.__app.fightStage?.playableRadius,
+      surfaceY: window.__app.fightStage?.getSurfaceWorldY?.(),
+    },
   }))()`);
   assert.equal(entered.mode, 'fight');
   assert.equal(entered.hasFightMode, true);
@@ -126,6 +134,13 @@ try {
   assert.notEqual(entered.viewport.host.width, 0, 'fight viewport has layout width');
   assert.match(entered.nameA, /YOU/, 'HUD Fighter A has YOU badge');
   assert.match(entered.nameB, /CPU/, 'HUD Fighter B has CPU badge');
+  assert.equal(entered.arena.hasFightStage, true, 'fight mode creates a dedicated combat stage');
+  assert.equal(entered.arena.fightStageVisible, true, 'combat stage is visible during fight mode');
+  assert.equal(entered.arena.showcaseVisible, false, 'showcase plinth is hidden during fight mode');
+  assert.ok(entered.arena.stageRadius >= entered.arena.playableRadius + 1,
+    `combat mat leaves safety space outside the legal arena (${JSON.stringify(entered.arena)})`);
+  assert.ok(Math.abs(entered.arena.surfaceY) < 0.001,
+    `combat mat is aligned with fighter foot height (${entered.arena.surfaceY})`);
 
   await evaluate(`(() => { const input = document.querySelector('#coach-input'); input.value = 'stay outside'; document.querySelector('#coach-form').requestSubmit(); })()`);
   await sleep(100);
@@ -389,6 +404,8 @@ try {
   await sleep(100);
   assert.equal(await evaluate('window.__app.mode'), 'showcase');
   assert.equal(await evaluate('Boolean(window.__app.fighter)'), true, 'showcase restored');
+  assert.equal(await evaluate('window.__app.fightStage?.group.visible'), false, 'fight stage is hidden after leaving fight mode');
+  assert.equal(await evaluate('window.__app.studio?.group?.visible'), true, 'showcase studio is restored after leaving fight mode');
   if (errors.length) console.error('browser errors:', JSON.stringify(errors));
   assert.equal(errors.length, 0, `browser errors: ${JSON.stringify(errors)}`);
 
