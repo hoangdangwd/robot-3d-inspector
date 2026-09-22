@@ -90,6 +90,7 @@ src/robots/        Fighter catalog, procedural assembly, rigid animation clips
 src/combat/        Authoritative fixed-step combat simulation, moves, Fight Mode bridge
 src/ai/             Local autonomous CombatBrain, behavior profiles, temporary blackboard
 src/coaching/       Bilingual parser, DirectCommand queue, Web Speech adapter
+src/sandbox/        Sandbox intents, direction/command parsing, fixed-step movement, horde, beam simulation
 src/arena/          PBR showcase studio; retained legacy ring modules
 src/camera/         Orbit and showcase camera controls
 src/audio/          Procedural Web Audio feedback
