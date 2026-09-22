@@ -49,6 +49,8 @@ Fight Mode supports bilingual local coaching in English (`en-US`) and Vietnamese
 
 Unknown short phrases can optionally use the Cloudflare Worker fallback at `/api/coach/interpret`. The Worker validates model output and never receives combat authority. Workers AI is configured as an optional server-side binding; if it is unavailable, the game reports a non-blocking fallback message and autonomous combat continues.
 
+Zombie Survival mode uses the same local-first boundary. `move east`, `stop`, `fire 3 o'clock`, and equivalent Vietnamese commands are resolved immediately in the browser. Natural-language Sandbox commands fall back to `/api/sandbox/interpret`, where OpenRouter's Decisions API uses `typesafe/jev-1.13` typed choices. Jev can only select an allowlisted Sandbox action and direction; it cannot return damage, transforms, animation commands, arbitrary code, or tactical scripts. The simulation validates the resulting `SandboxIntent` before execution.
+
 Local frontend + Worker development uses two terminals:
 
 ```bash
@@ -63,7 +65,15 @@ pnpm exec wrangler deploy --dry-run
 pnpm worker:deploy
 ```
 
-Do not put model keys in the browser. The current Workers AI binding does not require a browser secret. See `wrangler.jsonc` and `worker/coach-api.js`.
+Do not put model keys in the browser. Put the OpenRouter key in the Worker secret store or local `.dev.vars` copied from `.dev.vars.example`:
+
+```bash
+cp .env.example .env
+cp .dev.vars.example .dev.vars
+pnpm exec wrangler secret put OPENROUTER_API_KEY
+```
+
+`.env` may contain only the public `VITE_COACH_API_URL`; never add `OPENROUTER_API_KEY` to a `VITE_*` variable. See `wrangler.jsonc`, `worker/coach-api.js`, and `scripts/validate-openrouter-jev.mjs`.
 
 `validate:robots` checks five unique fighters, 15 rigid pivots each, authored heights, 200 complete clips, semantic coverage, distinct pose variants/signatures, single rotation ownership, ground contact, down/get-up endpoints, and pause/seek/frame-step behavior. It fails on bones, skinned meshes, non-finite tracks, or animation scale channels.
 

@@ -5,11 +5,18 @@
 import { SimClock } from '../combat/SimClock.js';
 import {
   SandboxIntentType,
+  createSandboxIntent,
   validateSandboxIntent,
 } from './SandboxIntent.js';
+import { validateSandboxPlan } from './SandboxPlan.js';
 import * as R from './SandboxRules.js';
 
-const MOVEMENT_TYPES = new Set([SandboxIntentType.MOVE, SandboxIntentType.STOP]);
+const MOVEMENT_TYPES = new Set([
+  SandboxIntentType.MOVE,
+  SandboxIntentType.STOP,
+  SandboxIntentType.AIM,
+]);
+const FIRE_TYPES = new Set([SandboxIntentType.FIRE, SandboxIntentType.ATTACK_TARGET]);
 const TAU = Math.PI * 2;
 
 export class SandboxSimulation {
@@ -54,6 +61,11 @@ export class SandboxSimulation {
     this.activeIntent = null;
     this.pendingFireIntent = null;
     this.activeFireIntent = null;
+    this.pendingPlan = null;
+    this.activePlan = null;
+    this.activePlanStep = null;
+    this.activePlanStepIndex = 0;
+    this.activePlanRun = 0;
     this.nextBeamTick = 0;
     this.score = 0;
     this.events = [];
@@ -63,9 +75,8 @@ export class SandboxSimulation {
   }
 
   /**
-   * Queue a movement or fire intent for consumption by a fixed simulation tick.
-   * Aim and target-selection intents belong to later Sandbox tasks and are
-   * rejected instead of being silently ignored.
+   * Queue a validated intent for consumption by a fixed simulation tick.
+   * Direct intents interrupt a queued multi-step plan so urgent commands stay responsive.
    *
    * @param {unknown} raw
    * @returns {{ ok: true, status: 'queued', intent: Readonly<object> } | { ok: false, error: string }}
@@ -75,10 +86,27 @@ export class SandboxSimulation {
     if (!result.ok) return result;
     if (result.value.expiresAt < this.clock.tick) return { ok: false, error: 'expired_intent' };
 
+    this.pendingPlan = null;
+    this.activePlan = null;
+    this.activePlanStep = null;
+    this.activePlanStepIndex = 0;
+    this.activePlanRun = 0;
     if (MOVEMENT_TYPES.has(result.value.type)) this.pendingIntent = result.value;
-    else if (result.value.type === SandboxIntentType.FIRE) this.pendingFireIntent = result.value;
+    else if (FIRE_TYPES.has(result.value.type)) this.pendingFireIntent = result.value;
     else return { ok: false, error: 'unsupported_intent_type' };
     return { ok: true, status: 'queued', intent: result.value };
+  }
+
+  /** Queue a bounded multi-step mission. */
+  submitPlan(raw) {
+    const result = validateSandboxPlan(raw);
+    if (!result.ok) return result;
+    this.pendingPlan = result.value;
+    this.activePlan = null;
+    this.activePlanStep = null;
+    this.pendingIntent = null;
+    this.pendingFireIntent = null;
+    return { ok: true, status: 'queued', plan: result.value };
   }
 
   /**
@@ -220,6 +248,11 @@ export class SandboxSimulation {
     this.activeIntent = null;
     this.pendingFireIntent = null;
     this.activeFireIntent = null;
+    this.pendingPlan = null;
+    this.activePlan = null;
+    this.activePlanStep = null;
+    this.activePlanStepIndex = 0;
+    this.activePlanRun = 0;
     this.nextBeamTick = 0;
     this.score = 0;
     this.events = [];
@@ -254,6 +287,13 @@ export class SandboxSimulation {
         isMoving: this.player.isMoving,
         activeIntent: this.activeIntent,
       },
+      plan: this.activePlan ? {
+        source: this.activePlan.source,
+        stepIndex: this.activePlanStepIndex,
+        run: this.activePlanRun,
+        remainingSteps: Math.max(0, this.activePlan.steps.length - this.activePlanStepIndex),
+        currentType: this.activePlanStep?.intent?.type || null,
+      } : null,
       zombies: this.getZombies(),
       score: this.score,
       events: this.getEvents(),
@@ -269,6 +309,7 @@ export class SandboxSimulation {
   }
 
   _tick(tick) {
+    this._advancePlan(tick);
     this._consumePendingIntent(tick);
     this._expireActiveIntent(tick);
 
@@ -293,6 +334,13 @@ export class SandboxSimulation {
       );
       this.player.x = next.x;
       this.player.z = next.z;
+    } else if (this.activeIntent?.type === SandboxIntentType.AIM) {
+      this.player.heading = turnTowards(
+        this.player.heading,
+        this.activeIntent.angle,
+        R.SANDBOX_TURN_RATE * R.SANDBOX_TICK_DT,
+      );
+      this._stopVelocity();
     } else {
       this._stopVelocity();
     }
@@ -308,11 +356,39 @@ export class SandboxSimulation {
     if (!intent || intent.createdAt > tick) return;
     this.pendingFireIntent = null;
     if (tick > intent.expiresAt) return;
+    if (intent.type === SandboxIntentType.ATTACK_TARGET) {
+      const target = intent.targetId === 'nearest' ? this._nearestZombie() : this.zombies.get(intent.targetId);
+      if (!target) return;
+      const angle = Math.atan2(target.x - this.player.x, -(target.z - this.player.z));
+      this.activeFireIntent = createSandboxIntent({
+        type: SandboxIntentType.FIRE,
+        source: intent.source,
+        priority: intent.priority,
+        createdAt: intent.createdAt,
+        expiresAt: intent.expiresAt,
+        angle,
+      });
+      return;
+    }
     this.activeFireIntent = intent;
   }
 
   _resolveBeam(tick) {
-    const intent = this.activeFireIntent;
+    let intent = this.activeFireIntent;
+    if (intent?.type === SandboxIntentType.ATTACK_TARGET) {
+      const target = intent.targetId === 'nearest' ? this._nearestZombie() : this.zombies.get(intent.targetId);
+      if (target) {
+        const angle = Math.atan2(target.x - this.player.x, -(target.z - this.player.z));
+        intent = this.activeFireIntent = createSandboxIntent({
+          type: SandboxIntentType.FIRE,
+          source: intent.source,
+          priority: intent.priority,
+          createdAt: intent.createdAt,
+          expiresAt: intent.expiresAt,
+          angle,
+        });
+      }
+    }
     if (!intent || tick > intent.expiresAt) {
       if (intent && tick > intent.expiresAt) this.activeFireIntent = null;
       return;
@@ -402,6 +478,71 @@ export class SandboxSimulation {
     });
   }
 
+  _advancePlan(tick) {
+    if (!this.activePlan && this.pendingPlan && this.pendingPlan.createdAt <= tick) {
+      this.activePlan = this.pendingPlan;
+      this.pendingPlan = null;
+      this.activePlanStepIndex = 0;
+      this.activePlanRun = 0;
+      this.activePlanStep = null;
+    }
+    if (!this.activePlan) return;
+    if (this.activePlanStep && tick <= this.activePlanStep.endTick) return;
+
+    const plan = this.activePlan;
+    if (this.activePlanStepIndex >= plan.steps.length) {
+      if (this.activePlanRun >= plan.repeat) {
+        this.activePlan = null;
+        this.activePlanStep = null;
+        this.activeIntent = null;
+        this.activeFireIntent = null;
+        this._stopMovement();
+        return;
+      }
+      this.activePlanRun += 1;
+      this.activePlanStepIndex = 0;
+    }
+
+    const step = plan.steps[this.activePlanStepIndex++];
+    const expiresAt = tick + step.durationTicks - 1;
+    const intent = createSandboxIntent({
+      type: step.type,
+      source: plan.source,
+      priority: plan.priority,
+      createdAt: tick,
+      expiresAt,
+      ...(step.angle === undefined ? {} : { angle: step.angle }),
+      ...(step.targetId === undefined ? {} : { targetId: step.targetId }),
+    });
+    this.activePlanStep = { intent, endTick: expiresAt };
+    if (step.type === SandboxIntentType.MOVE || step.type === SandboxIntentType.STOP || step.type === SandboxIntentType.AIM) {
+      this.activeIntent = intent;
+      this.activeFireIntent = null;
+      if (step.type === SandboxIntentType.STOP || step.type === SandboxIntentType.AIM) this.player.isMoving = false;
+      else {
+        this.player.isMoving = true;
+        this.player.desiredMoveAngle = intent.angle;
+      }
+    } else {
+      this.activeIntent = null;
+      this._stopMovement();
+      this.activeFireIntent = intent;
+    }
+  }
+
+  _nearestZombie() {
+    let nearest = null;
+    let nearestDistance = Infinity;
+    for (const zombie of this.zombies.values()) {
+      const distance = Math.hypot(zombie.x - this.player.x, zombie.z - this.player.z);
+      if (distance < nearestDistance || (distance === nearestDistance && (!nearest || zombie.id < nearest.id))) {
+        nearest = zombie;
+        nearestDistance = distance;
+      }
+    }
+    return nearest;
+  }
+
   _consumePendingIntent(tick) {
     const intent = this.pendingIntent;
     if (!intent || intent.createdAt > tick) return;
@@ -414,8 +555,9 @@ export class SandboxSimulation {
     }
 
     this.activeIntent = intent;
-    if (intent.type === SandboxIntentType.STOP) this._stopMovement();
-    else {
+    if (intent.type === SandboxIntentType.STOP || intent.type === SandboxIntentType.AIM) {
+      this._stopMovement();
+    } else {
       this.player.isMoving = true;
       this.player.desiredMoveAngle = intent.angle;
     }

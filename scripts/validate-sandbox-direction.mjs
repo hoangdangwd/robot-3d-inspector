@@ -66,6 +66,9 @@ for (const [text, angle] of compassCases) {
   assert.equal(result.isRelative, false);
 }
 ok('Vietnamese accented, Vietnamese unaccented and English compass phrases work');
+close(parsed('toward the sunrise').angle, Math.PI / 2, 'sunrise is east');
+close(parsed('hoàng hôn').angle, (3 * Math.PI) / 2, 'sunset is west');
+ok('natural sunrise/sunset phrases resolve to compass headings');
 
 console.log('\n── DirectionResolver: relative directions ──');
 const heading = Math.PI / 3;

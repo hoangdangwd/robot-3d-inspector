@@ -9,6 +9,9 @@ import { FightMode } from './combat/FightMode.js';
 import { getAction } from './combat/ActionRegistry.js';
 import { ARENA_RADIUS } from './combat/CombatRules.js';
 import { parseCoachText } from './coaching/LocalCommandParser.js';
+import { parseSandboxCommand, parseSandboxPlanCommand } from './sandbox/SandboxCommandParser.js';
+import { SandboxMode } from './sandbox/SandboxMode.js';
+import * as SANDBOX_RULES from './sandbox/SandboxRules.js';
 import { VoiceCoachController } from './coaching/VoiceCoachController.js';
 import { validateTactic, validateTacticV2, validatePlaybook } from './tactics/TacticSchema.js';
 import { validateTacticPatch, applyTacticPatch } from './tactics/TacticPatch.js';
@@ -33,9 +36,10 @@ class RobotFoundryApp {
     this.reducedMotion = settings.reducedMotion || matchMedia('(prefers-reduced-motion: reduce)').matches;
     this._lastSavedResultKey = '';
     this.activeRobotId = ROBOT_CATALOG[0].id;
-    /** @type {'showcase'|'vs_setup'|'fight'|'replay'} */
+    /** @type {'showcase'|'vs_setup'|'fight'|'replay'|'sandbox'} */
     this.mode = 'showcase';
     this.fightMode = null;
+    this.sandboxMode = null;
     this.fightStage = null;
     this.replayPlayer = null;
     this.matchSetup = null;
@@ -91,6 +95,9 @@ class RobotFoundryApp {
       onGridToggle:    visible  => { this.gridVisible = visible; this.persistence.saveSettings({ gridVisible: visible }); this.studio.setGridVisible(visible); },
       onFightToggle:   ()       => this.toggleFightMode(),
       onFightReset:    ()       => this.resetFightMode(),
+      onSandboxToggle: ()       => this.toggleSandboxMode(),
+      onSandboxReset:  ()       => this.resetSandboxMode(),
+      onSandboxCommand:(text, language) => this.handleSandboxCommand(text, language),
       onChangeOpponent: ()      => {
         this.exitFightMode();
         this.openVsSetup();
@@ -132,9 +139,16 @@ class RobotFoundryApp {
 
     this.voiceCoach = new VoiceCoachController({
       language: settings.language,
-      onFinal: (text, language) => this.handleCoachText(text, language),
-      onInterim: text => this.hud.setCoachFeedback(`HEARING · ${text}`),
-      onStatus: status => this.hud.setVoiceState(status),
+      onFinal: (text, language) => this.mode === 'sandbox'
+        ? this.handleSandboxCommand(text, language)
+        : this.handleCoachText(text, language),
+      onInterim: text => this.mode === 'sandbox'
+        ? this.hud.setSandboxFeedback(`HEARING · ${text}`)
+        : this.hud.setCoachFeedback(`HEARING · ${text}`),
+      onStatus: status => {
+        this.hud.setVoiceState(status);
+        if (this.mode === 'sandbox') this.hud.setSandboxFeedback(`VOICE · ${String(status).toUpperCase()}`);
+      },
     });
 
     this.hud.populateRobotCatalog(ROBOT_CATALOG, this.activeRobotId);
@@ -235,6 +249,7 @@ class RobotFoundryApp {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     if (this.mode === 'fight' || this.mode === 'replay') this.frameFightArena();
+    else if (this.mode === 'sandbox') this.frameSandboxArena();
     else if (this.fighter) this.fitCameraToFighter();
   }
 
@@ -276,6 +291,111 @@ class RobotFoundryApp {
     });
 
     pRenderer.dispose();
+  }
+
+  // ── Zombie Survival Sandbox commands ───────────────────────────
+  toggleSandboxMode() {
+    if (this.mode === 'sandbox') this.exitSandboxMode();
+    else this.enterSandboxMode();
+  }
+
+  enterSandboxMode() {
+    if (this.mode === 'fight') this.exitFightMode();
+    if (this.mode === 'replay') this.stopReplay();
+    this.closeVsSetup();
+    this.mode = 'sandbox';
+    this._sandboxRequestVersion = (this._sandboxRequestVersion || 0) + 1;
+    if (this.fighter) {
+      this.scene.remove(this.fighter.group);
+      this.fighter.dispose();
+      this.fighter = null;
+    }
+    this.studio.setVisible(false);
+    this.sandboxMode = new SandboxMode(this.scene, {
+      defId: this.activeRobotId,
+      seed: this._testSeed,
+      onStateChange: state => this.hud.updateSandboxHUD(state),
+    });
+    this.hud.setSandboxMode(true);
+    this.frameSandboxArena();
+    this.hud.showToast('ZOMBIE SURVIVAL — JEV COMMAND LINK READY');
+  }
+
+  resetSandboxMode() {
+    if (!this.sandboxMode) return;
+    this._sandboxRequestVersion = (this._sandboxRequestVersion || 0) + 1;
+    this.sandboxMode.reset();
+    this.hud.setSandboxFeedback('SANDBOX RESET · LOCAL AUTONOMY ACTIVE');
+  }
+
+  exitSandboxMode() {
+    if (this.mode !== 'sandbox') return;
+    this._sandboxRequestVersion = (this._sandboxRequestVersion || 0) + 1;
+    this.sandboxMode?.dispose();
+    this.sandboxMode = null;
+    this.mode = 'showcase';
+    this.studio.setVisible(true);
+    this.hud.setSandboxMode(false);
+    this.switchRobot(this.activeRobotId, false);
+    this.fitCameraToFighter();
+    this.hud.showToast('SHOWCASE MODE');
+  }
+
+  async handleSandboxCommand(text, language = 'en-US') {
+    if (!this.sandboxMode || this.mode !== 'sandbox') return { kind: 'unrecognized', reason: 'sandbox_not_active' };
+    const tick = this.sandboxMode.getState().tick;
+    const heading = this.sandboxMode.getState().player.heading;
+    const localPlan = parseSandboxPlanCommand(text, { language, currentHeading: heading, tick });
+    if (localPlan.kind === 'sandbox_plan') {
+      const queued = this.sandboxMode.submitPlan(localPlan.plan);
+      this.hud.setSandboxFeedback(queued.ok ? `LOCAL · ${localPlan.plan.steps.length}-STEP MISSION QUEUED` : `REJECTED · ${queued.error.toUpperCase()}`, queued.ok ? 'success' : 'error');
+      return localPlan;
+    }
+    const local = parseSandboxCommand(text, { language, currentHeading: heading, tick });
+    if (local.kind === 'sandbox_intent') {
+      const queued = this.sandboxMode.submitIntent(local.intent);
+      this.hud.setSandboxFeedback(queued.ok ? `LOCAL · ${local.intent.type.toUpperCase()} QUEUED` : `REJECTED · ${queued.error.toUpperCase()}`, queued.ok ? 'success' : 'error');
+      return local;
+    }
+
+    const requestVersion = (this._sandboxRequestVersion || 0) + 1;
+    this._sandboxRequestVersion = requestVersion;
+    this.hud.setSandboxFeedback('ASKING JEV · ROBOT CONTINUES AUTONOMOUSLY');
+    const remote = await this._interpretSandboxWithWorker(text, language, requestVersion, tick, heading);
+    if (!remote || requestVersion !== this._sandboxRequestVersion || this.mode !== 'sandbox') return local;
+    if (remote.error) {
+      this.hud.setSandboxFeedback(remote.error.message || remote.error, 'error');
+      return local;
+    }
+    if (remote.plan) {
+      const queued = this.sandboxMode.submitPlan(remote.plan);
+      this.hud.setSandboxFeedback(queued.ok ? `JEV · ${remote.plan.steps.length}-STEP MISSION QUEUED` : `REJECTED · ${queued.error.toUpperCase()}`, queued.ok ? 'success' : 'error');
+      return remote;
+    }
+    const intent = remote.intent;
+    const queued = this.sandboxMode.submitIntent(intent);
+    this.hud.setSandboxFeedback(queued.ok ? `JEV · ${intent.type.toUpperCase()} QUEUED` : `REJECTED · ${queued.error.toUpperCase()}`, queued.ok ? 'success' : 'error');
+    return remote;
+  }
+
+  async _interpretSandboxWithWorker(transcript, language, requestVersion, tick, heading) {
+    const requestId = `sandbox_${requestVersion}_${Date.now().toString(36)}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3200);
+    try {
+      const endpoint = this._coachEndpoint('/api/sandbox/interpret');
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ transcript, language, requestId, tick, currentHeading: heading }),
+        signal: controller.signal,
+      });
+      return await response.json();
+    } catch (error) {
+      return { error: { code: 'NETWORK_ERROR', message: error.name === 'AbortError' ? 'JEV TIMEOUT · LOCAL CONTROL STILL ACTIVE' : 'JEV UNAVAILABLE · USE LOCAL COMMANDS' } };
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // ── Live coaching ────────────────────────────────────────────────
@@ -654,6 +774,8 @@ class RobotFoundryApp {
   startReplay(replayLog) {
     if (this.mode === 'fight') {
       this.exitFightMode();
+    } else if (this.mode === 'sandbox') {
+      this.exitSandboxMode();
     }
     if (this.fighter) {
       this.scene.remove(this.fighter.group);
@@ -705,6 +827,11 @@ class RobotFoundryApp {
       this.openVsSetup();
     } else if (this.mode === 'vs_setup') {
       this.closeVsSetup();
+    } else if (this.mode === 'fight') {
+      this.exitFightMode();
+    } else if (this.mode === 'sandbox') {
+      this.exitSandboxMode();
+      this.openVsSetup();
     } else {
       this.exitFightMode();
     }
@@ -869,6 +996,24 @@ class RobotFoundryApp {
   }
 
   // ── Camera ───────────────────────────────────────────────────────
+  frameSandboxArena() {
+    const radius = SANDBOX_RULES.SANDBOX_ARENA_RADIUS;
+    const fov = 42;
+    this.camera.fov = fov;
+    this.camera.updateProjectionMatrix();
+    const tangent = Math.tan(THREE.MathUtils.degToRad(fov) / 2);
+    const distance = Math.max(6 / tangent, radius / (tangent * Math.max(this.camera.aspect, 0.55))) * 1.05;
+    const target = new THREE.Vector3(0, 1.1, 0);
+    const direction = new THREE.Vector3(0.62, 0.66, 0.48).normalize();
+    const position = target.clone().addScaledVector(direction, distance);
+    this.cameraController.defaultPos.copy(position);
+    this.cameraController.defaultTarget.copy(target);
+    this.cameraController.controls.target.copy(target);
+    this.camera.position.copy(position);
+    this.camera.lookAt(target);
+    this.cameraController.controls.update(0);
+  }
+
   showFightArena() {
     if (!this.fightStage) {
       this.fightStage = new FightingStage(this.scene, {
@@ -931,6 +1076,7 @@ class RobotFoundryApp {
 
   resetCamera() {
     if (this.mode === 'fight' || this.mode === 'replay') this.frameFightArena();
+    else if (this.mode === 'sandbox') this.frameSandboxArena();
     else this.fitCameraToFighter();
     this.cameraController.resetCamera();
   }
@@ -955,6 +1101,8 @@ class RobotFoundryApp {
       this.fightMode.update(delta);
     } else if (this.mode === 'replay' && this.replayPlayer) {
       this.replayPlayer.update(delta);
+    } else if (this.mode === 'sandbox' && this.sandboxMode) {
+      this.sandboxMode.update(delta);
     } else if (this.fighter) {
       this.fighter.update(delta);
     }
@@ -971,7 +1119,11 @@ class RobotFoundryApp {
     }
 
     this.hudElapsed += delta;
-    if (this.hudElapsed > 0.08) { this.syncHUD(); this.hudElapsed = 0; }
+    if (this.hudElapsed > 0.08) {
+      if (this.mode === 'sandbox' && this.sandboxMode) this.hud.updateSandboxHUD(this.sandboxMode.getState());
+      else this.syncHUD();
+      this.hudElapsed = 0;
+    }
   };
 }
 

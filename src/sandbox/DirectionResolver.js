@@ -49,6 +49,12 @@ const COMPASS_MAP = Object.freeze({
   'tay bac': (7 * Math.PI) / 4,
   northwest: (7 * Math.PI) / 4,
   'north west': (7 * Math.PI) / 4,
+  sunrise: Math.PI / 2,
+  'bình minh': Math.PI / 2,
+  'binh minh': Math.PI / 2,
+  sunset: (3 * Math.PI) / 2,
+  'hoàng hôn': (3 * Math.PI) / 2,
+  'hoang hon': (3 * Math.PI) / 2,
 });
 
 const COMPASS_PHRASES = Object.freeze(

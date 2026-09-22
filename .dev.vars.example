@@ -1,3 +1,12 @@
-# Local Cloudflare Worker development. Do not put production secrets here.
+# Local Cloudflare Worker development.
 ALLOWED_ORIGIN=http://localhost:5173
+
+# OpenRouter server-side configuration for TypeSafe Jev.
+# Put the real key in .dev.vars (never in VITE_* or the browser bundle).
+OPENROUTER_API_KEY=replace_with_openrouter_key
+OPENROUTER_JEV_MODEL=typesafe/jev-1.13
+OPENROUTER_SITE_URL=http://localhost:5173
+OPENROUTER_APP_NAME=Robot Foundry
+
+# Existing Workers AI fallback for Live Fight. Optional.
 AI_MODEL=@cf/meta/llama-3.2-3b-instruct

@@ -1280,6 +1280,28 @@ dialog p {
 .fight-status.fight-ko {
   color: #d33; font-weight: 700; font-size: 14px;
 }
+/* ── Zombie Survival HUD ─────────────────────────────────────── */
+.sandbox-hud {
+  position: absolute; inset: 12px; z-index: 8; pointer-events: none;
+  font: 700 10px var(--mono); letter-spacing: .08em; color: var(--ink);
+}
+.sandbox-hud-top, .sandbox-hud-bottom {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: rgba(245,245,238,.9); border: 1px solid var(--line); border-radius: 6px;
+  padding: 8px 10px; pointer-events: auto;
+}
+.sandbox-hud-top { justify-content: space-between; }
+.sandbox-hud-bottom { margin-top: 8px; }
+.sandbox-kicker { color: #c34b3c; }
+.sandbox-stat strong { color: var(--accent); }
+.sandbox-hud button { border: 1px solid var(--line); background: var(--bg); padding: 5px 8px; font: 700 9px var(--mono); cursor: pointer; }
+.sandbox-hud form { display: flex; gap: 5px; margin-left: auto; }
+.sandbox-hud input { width: min(280px, 38vw); border: 1px solid var(--line); background: rgba(255,255,255,.72); padding: 6px 8px; font: 600 10px var(--mono); }
+.sandbox-hud [data-tone="error"] { color: #c34b3c; }
+.sandbox-hud [data-tone="success"] { color: #2a8c4a; }
+.nav-item.nav-sandbox-highlight { color: #c34b3c; }
+.nav-item.nav-sandbox-highlight.active { background: rgba(195,75,60,.12); border-color: #c34b3c; }
+
 /* ── Fight Result / centered outcome overlay ──────────────────── */
 .fight-result {
   position: absolute;

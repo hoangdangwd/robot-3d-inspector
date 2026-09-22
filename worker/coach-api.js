@@ -3,6 +3,12 @@
 // This endpoint returns constrained intent data only; it never touches combat.
 
 import { parseCoachText } from '../src/coaching/LocalCommandParser.js';
+import { parseSandboxCommand, parseSandboxPlanCommand } from '../src/sandbox/SandboxCommandParser.js';
+import {
+  createSandboxIntent,
+  SandboxIntentSource,
+} from '../src/sandbox/SandboxIntent.js';
+import { createSandboxPlan } from '../src/sandbox/SandboxPlan.js';
 import { validateTactic, validateTacticV2 } from '../src/tactics/TacticSchema.js';
 import { validateTacticPatch, applyTacticPatch } from '../src/tactics/TacticPatch.js';
 
@@ -16,6 +22,17 @@ const DISTANCES = new Set(['close', 'mid', 'far']);
 const ZONES = new Set(['any', 'head', 'body']);
 const TEMPOS = new Set(['patient', 'normal', 'high']);
 const MAX_MODEL_OUTPUT_CHARS = 4096;
+const JEV_CONFIDENCE_THRESHOLD = .72;
+const SANDBOX_ACTIONS = new Set(['move', 'stop', 'aim', 'fire', 'attack_nearest', 'unsupported']);
+const SANDBOX_COMMANDS = new Set([
+  'move', 'stop', 'aim', 'fire', 'move_then_fire', 'retreat_and_fire',
+  'hold_and_fire', 'patrol_square', 'attack_move', 'attack_nearest', 'unsupported',
+]);
+const SANDBOX_DIRECTIONS = new Set([
+  'clock_12', 'clock_1', 'clock_2', 'clock_3', 'clock_4', 'clock_5', 'clock_6',
+  'clock_7', 'clock_8', 'clock_9', 'clock_10', 'clock_11',
+  'relative_forward', 'relative_right', 'relative_behind', 'relative_left', 'none',
+]);
 
 export default {
   async fetch(request, env) {
@@ -26,6 +43,9 @@ export default {
     }
     if (url.pathname === '/api/coach/tactic-patch') {
       return cors(await handleTacticPatch(request, env), request, env);
+    }
+    if (url.pathname === '/api/sandbox/interpret') {
+      return cors(await handleSandboxInterpret(request, env), request, env);
     }
     if (url.pathname !== '/api/coach/interpret') {
       return cors(json({ error: { code: 'NOT_FOUND', message: 'Route not found' } }, 404), request, env);
@@ -203,6 +223,277 @@ function extractModelText(result) {
 function stripIntent(intent) {
   const { kind, actionId, changes, confidence, expiresAt, priority, commandId, fighterId, language, createdAt } = intent;
   return { kind, actionId, changes, confidence, expiresAt, priority, commandId, fighterId, language, createdAt };
+}
+
+async function handleSandboxInterpret(request, env) {
+  if (request.method !== 'POST') return json({ error: { code: 'METHOD_NOT_ALLOWED', message: 'Use POST' } }, 405);
+  const originResult = checkOrigin(request, env);
+  if (!originResult.ok) return json({ error: originResult.error }, 403);
+
+  let input;
+  try { input = await readJson(request, 8192); } catch (error) {
+    return json({ error: { code: error.code || 'INVALID_JSON', message: error.message } }, 400);
+  }
+  const validation = validateSandboxInput(input);
+  if (!validation.ok) return json({ error: validation.error }, 422);
+  const { transcript, language, requestId, currentHeading, tick } = validation.value;
+
+  const localPlan = parseSandboxPlanCommand(transcript, {
+    source: SandboxIntentSource.LOCAL,
+    currentHeading,
+    tick,
+  });
+  if (localPlan.kind === 'sandbox_plan') {
+    return json({ ok: true, requestId, source: 'local_worker_fast_path', plan: localPlan.plan });
+  }
+  const local = parseSandboxCommand(transcript, {
+    source: SandboxIntentSource.LOCAL,
+    currentHeading,
+    tick,
+  });
+  if (local.kind === 'sandbox_intent') {
+    return json({ ok: true, requestId, source: 'local_worker_fast_path', intent: local.intent });
+  }
+
+  if (!env.OPENROUTER_API_KEY) {
+    return json({
+      error: {
+        code: 'OPENROUTER_UNAVAILABLE',
+        message: 'OpenRouter is not configured; use a short local Sandbox command',
+        requestId,
+      },
+    }, 503);
+  }
+
+  try {
+    const fetchImpl = typeof env.OPENROUTER_FETCH === 'function' ? env.OPENROUTER_FETCH : fetch;
+    const response = await fetchImpl('https://openrouter.ai/api/alpha/decisions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        ...(env.OPENROUTER_SITE_URL ? { 'HTTP-Referer': env.OPENROUTER_SITE_URL } : {}),
+        ...(env.OPENROUTER_APP_NAME ? { 'X-Title': env.OPENROUTER_APP_NAME } : {}),
+      },
+      body: JSON.stringify({
+        model: env.OPENROUTER_JEV_MODEL || 'typesafe/jev-1.13',
+        state: {
+          player_command: transcript,
+          language,
+          current_heading_radians: currentHeading,
+          current_tick: tick,
+          game: 'Robot Foundry Zombie Survival Sandbox',
+          allowed_actions: 'move, stop, aim, fire, attack_nearest, attack_move, move_then_fire, retreat_and_fire, hold_and_fire, patrol_square. No damage, transforms, animation or code may be returned.',
+        },
+        questions: sandboxJevQuestions(),
+      }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      return json({ error: { code: 'OPENROUTER_REQUEST_FAILED', message: 'Jev command interpretation failed', requestId } }, 502);
+    }
+    const decision = createSandboxDecisionFromJev(payload, { requestId, currentHeading, language, tick });
+    if (!decision) {
+      return json({ error: { code: 'JEV_INVALID_DECISION', message: 'Jev returned no safe Sandbox intent', requestId } }, 422);
+    }
+    return json({
+      ok: true,
+      requestId,
+      source: 'openrouter_jev',
+      ...decision,
+      usage: safeUsage(payload?.usage),
+    });
+  } catch (error) {
+    if (error?.message === 'JEV_LOW_CONFIDENCE') {
+      return json({ error: { code: 'JEV_LOW_CONFIDENCE', message: 'Jev was not confident enough to issue a Sandbox command', requestId } }, 422);
+    }
+    console.error('OpenRouter Jev error in Sandbox interpret:', error);
+    return json({ error: { code: 'OPENROUTER_REQUEST_FAILED', message: 'Jev command interpretation unavailable', requestId } }, 502);
+  }
+}
+
+function validateSandboxInput(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return fail('VALIDATION_ERROR', 'Body must be an object');
+  const transcript = typeof input.transcript === 'string' ? input.transcript.trim() : '';
+  const language = input.language;
+  const requestId = typeof input.requestId === 'string' ? input.requestId : '';
+  const currentHeading = input.currentHeading === undefined ? 0 : Number(input.currentHeading);
+  const tick = input.tick === undefined ? 0 : Number(input.tick);
+  if (!transcript || transcript.length > 256) return fail('VALIDATION_ERROR', 'transcript must be 1–256 characters');
+  if (!ALLOWED_LANGUAGES.has(language)) return fail('VALIDATION_ERROR', 'language must be en-US or vi-VN');
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(requestId)) return fail('VALIDATION_ERROR', 'requestId is invalid');
+  if (!Number.isFinite(currentHeading)) return fail('VALIDATION_ERROR', 'currentHeading must be finite');
+  if (!Number.isSafeInteger(tick) || tick < 0) return fail('VALIDATION_ERROR', 'tick must be a non-negative integer');
+  return { ok: true, value: { transcript, language, requestId, currentHeading, tick } };
+}
+
+function sandboxJevQuestions() {
+  return {
+    action: {
+      type: 'choice',
+      instructions: 'Classify a single Sandbox action. Use unsupported for a multi-step mission; use attack_nearest only when the local simulation can select the nearest zombie.',
+      criteria: {
+        move: 'The player asks the robot to move, go, walk, advance, retreat, strafe, or head in a direction.',
+        stop: 'The player asks the robot to stop, halt, stand still, or hold position.',
+        fire: 'The player asks the robot to shoot, fire, blast, use the beam, or fire a laser in a direction.',
+        aim: 'The player asks the robot to turn and face a direction without moving or firing.',
+        attack_nearest: 'The player asks the robot to attack the nearest zombie.',
+        unsupported: 'The command is multi-step, ambiguous, missing a direction, asks for unsupported behavior, or requests game-state mutation.',
+      },
+    },
+    command: {
+      type: 'choice',
+      instructions: 'Choose the safest bounded mission matching the whole command. Never invent targets, damage or code.',
+      criteria: {
+        move: 'Move in one direction.',
+        stop: 'Stop and hold position.',
+        aim: 'Turn to face one direction.',
+        fire: 'Fire in one direction.',
+        move_then_fire: 'Move in a direction, then fire.',
+        retreat_and_fire: 'Move backward relative to current heading, then fire.',
+        hold_and_fire: 'Hold position, then fire.',
+        patrol_square: 'Patrol a fixed four-side square and stop.',
+        attack_move: 'Move in a direction, then attack the nearest zombie selected locally.',
+        attack_nearest: 'Fire at the nearest zombie using local target selection.',
+        unsupported: 'Ambiguous or unsafe command.',
+      },
+    },
+    direction: {
+      type: 'choice',
+      instructions: 'Which direction is explicitly requested? Use absolute clock directions when present, otherwise relative directions. Choose none only for stop or when no direction is required.',
+      criteria: {
+        clock_12: '12 o’clock, north, straight ahead in the world.',
+        clock_1: '1 o’clock or slightly northeast.',
+        clock_2: '2 o’clock or northeast/east-northeast.',
+        clock_3: '3 o’clock or east/right in the world.',
+        clock_4: '4 o’clock or southeast/east-southeast.',
+        clock_5: '5 o’clock or slightly southeast.',
+        clock_6: '6 o’clock or south/behind in the world.',
+        clock_7: '7 o’clock or slightly southwest.',
+        clock_8: '8 o’clock or southwest/west-southwest.',
+        clock_9: '9 o’clock or west/left in the world.',
+        clock_10: '10 o’clock or northwest/west-northwest.',
+        clock_11: '11 o’clock or slightly northwest.',
+        relative_forward: 'Forward, ahead, or straight relative to the robot heading.',
+        relative_right: 'Right relative to the robot heading.',
+        relative_behind: 'Behind, backward, or back relative to the robot heading.',
+        relative_left: 'Left relative to the robot heading.',
+        none: 'No direction is required or the command is stop.',
+      },
+    },
+    direction_2: {
+      type: 'choice',
+      instructions: 'Choose the second direction for a two-step mission. Use none when it should reuse the first direction.',
+      criteria: {
+        clock_12: '12 o’clock / north.', clock_1: '1 o’clock.', clock_2: '2 o’clock.', clock_3: '3 o’clock / east.',
+        clock_4: '4 o’clock.', clock_5: '5 o’clock.', clock_6: '6 o’clock / south.', clock_7: '7 o’clock.',
+        clock_8: '8 o’clock.', clock_9: '9 o’clock / west.', clock_10: '10 o’clock.', clock_11: '11 o’clock.',
+        relative_forward: 'Forward.', relative_right: 'Right.', relative_behind: 'Behind.', relative_left: 'Left.', none: 'Reuse the first direction.',
+      },
+    },
+  };
+}
+
+function pickSandboxChoice(command, action) {
+  const commandOk = command?.type === 'choice' && SANDBOX_COMMANDS.has(command.choice) && command.choice !== 'unsupported';
+  if (commandOk) return command;
+  const actionOk = action?.type === 'choice' && SANDBOX_ACTIONS.has(action.choice) && action.choice !== 'unsupported';
+  if (actionOk) return action;
+  return command?.type === 'choice' ? command : action;
+}
+
+function createSandboxDecisionFromJev(payload, context) {
+  const answers = payload?.answers || {};
+  const action = answers.action;
+  const command = answers.command;
+  const direction = answers.direction;
+  const direction2 = answers.direction_2;
+  const selected = pickSandboxChoice(command, action);
+  const choice = selected?.choice;
+  const confidence = Number(selected?.confidence ?? 0);
+  const directionConfidence = Number(direction?.confidence ?? 0);
+  if (!selected || selected.type !== 'choice' || (!SANDBOX_ACTIONS.has(choice) && !SANDBOX_COMMANDS.has(choice))) return null;
+  if (confidence < JEV_CONFIDENCE_THRESHOLD) throw new Error('JEV_LOW_CONFIDENCE');
+  if (choice === 'unsupported') return null;
+  if (choice === 'attack_nearest') {
+    return {
+      intent: createSandboxIntent({
+        type: 'attack_target',
+        targetId: 'nearest',
+        source: SandboxIntentSource.AI,
+        priority: confidence,
+        createdAt: context.tick,
+        expiresAt: context.tick + 60,
+      }),
+    };
+  }
+  const needsPrimaryDirection = !['stop', 'hold_and_fire'].includes(choice);
+  const primaryDirection = direction?.type === 'choice' && SANDBOX_DIRECTIONS.has(direction.choice) ? direction : null;
+  const secondaryDirection = direction2?.type === 'choice' && SANDBOX_DIRECTIONS.has(direction2.choice) ? direction2 : null;
+  if (needsPrimaryDirection && !primaryDirection) return null;
+  if (needsPrimaryDirection && primaryDirection.choice === 'none') return null;
+  if (needsPrimaryDirection && directionConfidence < JEV_CONFIDENCE_THRESHOLD) throw new Error('JEV_LOW_CONFIDENCE');
+  if (!['move', 'stop', 'aim', 'fire'].includes(choice)) {
+    const plan = createSandboxPlanFromJev(choice, confidence, primaryDirection?.choice, secondaryDirection?.choice, context);
+    return plan ? { plan } : null;
+  }
+  if (!primaryDirection) return null;
+
+  const raw = {
+    type: choice,
+    source: SandboxIntentSource.AI,
+    priority: Math.min(1, Math.max(0, confidence)),
+    createdAt: context.tick,
+    expiresAt: context.tick + ({ move: 60, stop: 18, aim: 60, fire: 12 }[choice] || 18),
+  };
+  if (choice !== 'stop') raw.angle = sandboxDirectionAngle(direction.choice, context.currentHeading);
+  return { intent: createSandboxIntent(raw) };
+}
+
+function createSandboxPlanFromJev(choice, confidence, firstLabel, secondLabel, context) {
+  const usableFirst = firstLabel && firstLabel !== 'none' ? firstLabel : null;
+  const usableSecond = secondLabel && secondLabel !== 'none' ? secondLabel : usableFirst;
+  if (!usableSecond && ['move_then_fire', 'retreat_and_fire', 'hold_and_fire', 'patrol_square'].includes(choice)) return null;
+  const first = usableFirst ? sandboxDirectionAngle(usableFirst, context.currentHeading) : sandboxDirectionAngle(usableSecond, context.currentHeading);
+  const second = sandboxDirectionAngle(usableSecond, context.currentHeading);
+  const move = (angle, durationTicks = 90) => ({ type: 'move', angle, durationTicks });
+  const fire = angle => ({ type: 'fire', angle, durationTicks: 24 });
+  const stop = () => ({ type: 'stop', durationTicks: 36 });
+  let steps;
+  if (choice === 'move_then_fire') steps = [move(first), fire(second)];
+  else if (choice === 'retreat_and_fire') steps = [move(sandboxDirectionAngle('relative_behind', context.currentHeading)), fire(second)];
+  else if (choice === 'hold_and_fire') steps = [stop(), fire(second)];
+  else if (choice === 'patrol_square') steps = [move(first, 72), move(first + Math.PI / 2, 72), move(first + Math.PI, 72), move(first - Math.PI / 2, 72), stop()];
+  else if (choice === 'attack_move') steps = [move(first), { type: 'attack_target', targetId: 'nearest', durationTicks: 30 }];
+  else return null;
+  return createSandboxPlan({ source: SandboxIntentSource.AI, priority: confidence, createdAt: context.tick, steps });
+}
+
+function sandboxDirectionAngle(label, heading) {
+  const clock = {
+    clock_12: 0, clock_1: Math.PI / 6, clock_2: Math.PI / 3, clock_3: Math.PI / 2,
+    clock_4: (2 * Math.PI) / 3, clock_5: (5 * Math.PI) / 6, clock_6: Math.PI,
+    clock_7: (7 * Math.PI) / 6, clock_8: (4 * Math.PI) / 3, clock_9: (3 * Math.PI) / 2,
+    clock_10: (5 * Math.PI) / 3, clock_11: (11 * Math.PI) / 6,
+  };
+  const relative = {
+    relative_forward: 0,
+    relative_right: Math.PI / 2,
+    relative_behind: Math.PI,
+    relative_left: -Math.PI / 2,
+  };
+  const angle = clock[label] ?? (heading + relative[label]);
+  const normalized = angle % (Math.PI * 2);
+  return normalized < 0 ? normalized + Math.PI * 2 : normalized;
+}
+
+function safeUsage(usage) {
+  if (!usage || typeof usage !== 'object') return undefined;
+  const result = {};
+  for (const key of ['input_tokens', 'output_tokens', 'cost']) {
+    if (Number.isFinite(Number(usage[key]))) result[key] = Number(usage[key]);
+  }
+  return Object.keys(result).length ? result : undefined;
 }
 
 async function handleTacticPatch(request, env) {

@@ -214,7 +214,9 @@ const aim = createSandboxIntent({
   expiresAt: 10,
   angle: 0,
 });
-assert.deepEqual(unsupported.submitIntent(aim), { ok: false, error: 'unsupported_intent_type' });
-ok('fire is accepted while future aim behavior remains explicitly unsupported');
+assert.equal(unsupported.submitIntent(aim).ok, true);
+unsupported.step(3);
+assert.ok(Math.abs(unsupported.getState().player.heading) < 1e-9);
+ok('fire and aim are accepted as bounded intents without bypassing fixed-step simulation');
 
 console.log(`\nPASS: ${pass} assertions. Sandbox fixed-step movement validated.\n`);

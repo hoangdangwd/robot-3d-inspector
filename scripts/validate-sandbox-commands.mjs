@@ -3,7 +3,7 @@
 // Run: node scripts/validate-sandbox-commands.mjs
 
 import assert from 'node:assert/strict';
-import { parseSandboxCommand } from '../src/sandbox/SandboxCommandParser.js';
+import { parseSandboxCommand, parseSandboxPlanCommand } from '../src/sandbox/SandboxCommandParser.js';
 import { SandboxIntentSource, SandboxIntentType } from '../src/sandbox/SandboxIntent.js';
 
 let pass = 0;
@@ -67,6 +67,25 @@ assert.equal(fireEnglish.intent.type, SandboxIntentType.FIRE);
 assert.equal(fireEnglish.intent.angle, (3 * Math.PI) / 2);
 ok('English beam command supports clock direction');
 
+const mission = parseSandboxPlanCommand('move east, then fire north', { tick: 10 });
+assert.equal(mission.kind, 'sandbox_plan');
+assert.equal(mission.plan.steps.length, 2);
+assert.equal(mission.plan.steps[0].type, SandboxIntentType.MOVE);
+assert.equal(mission.plan.steps[1].type, SandboxIntentType.FIRE);
+ok('compound movement and fire command becomes a bounded deterministic plan');
+
+const vietnameseMission = parseSandboxPlanCommand('đi đông rồi bắn bắc', { tick: 0 });
+assert.equal(vietnameseMission.kind, 'sandbox_plan');
+assert.equal(vietnameseMission.plan.steps[0].type, SandboxIntentType.MOVE);
+assert.equal(vietnameseMission.plan.steps[1].type, SandboxIntentType.FIRE);
+assert.ok(Math.abs(vietnameseMission.plan.steps[0].angle - Math.PI / 2) < 1e-9);
+ok('accented Vietnamese compound commands split on rồi');
+
+const nearest = intentOf('attack nearest zombie', { tick: 5 });
+assert.equal(nearest.intent.type, SandboxIntentType.ATTACK_TARGET);
+assert.equal(nearest.intent.targetId, 'nearest');
+ok('nearest-zombie command delegates target selection to local simulation');
+
 console.log('\n── SandboxCommandParser: deterministic boundary ──');
 const options = { tick: 77, currentHeading: Math.PI / 4, source: SandboxIntentSource.AI, priority: .65, expiresInTicks: 90 };
 const first = parseSandboxCommand('di chuyen sang phai', options);
@@ -81,6 +100,7 @@ console.log('\n── SandboxCommandParser: unsupported and incomplete commands 
 unrecognized('', 'empty_command');
 unrecognized('đi nhanh lên', 'missing_direction');
 unrecognized('bắn zombie', 'missing_direction');
+unrecognized('move east, then fire north', 'compound_command');
 unrecognized('jab', 'unsupported_command');
 unrecognized('right hook', 'unsupported_command');
 unrecognized('đấm thẳng sang trái', 'unsupported_command');

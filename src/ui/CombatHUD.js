@@ -75,6 +75,7 @@ export class CombatHUD {
   <nav class="top-nav">
     <button class="nav-item active" id="nav-lab">Hangar / Lab<span class="tag">01</span></button>
     <button class="nav-item nav-fight-highlight" id="nav-fight" aria-label="Vào đấu đối kháng"><span class="nav-fight-icon">⚔</span> Fight Mode<span class="tag tag-live">LIVE</span></button>
+    <button class="nav-item nav-sandbox-highlight" id="nav-sandbox" aria-label="Mở Zombie Survival"><span class="nav-fight-icon">☣</span> Zombie Survival<span class="tag tag-live">BETA</span></button>
     <button class="nav-item" id="nav-history">History<span class="tag">03</span></button>
     <button class="nav-item" id="nav-about">The project ${icon('arrow')}</button>
   </nav>
@@ -148,6 +149,26 @@ export class CombatHUD {
               <div class="fight-health-track"><div class="fight-health-fill" id="fight-hp-b"></div></div>
               <div class="fight-stamina-track"><div class="fight-stamina-fill" id="fight-sta-a"></div></div>
               <div class="fight-posture-track" title="Posture"><div class="fight-posture-fill" id="fight-pos-b"></div></div>
+            </div>
+          </div>
+
+          <div class="sandbox-hud" id="sandbox-hud" style="display:none" aria-label="Zombie Survival status">
+            <div class="sandbox-hud-top">
+              <span class="sandbox-kicker"><span class="status-dot"></span> ZOMBIE SURVIVAL // 360°</span>
+              <span class="sandbox-stat">HP <strong id="sandbox-hp">100</strong></span>
+              <span class="sandbox-stat">ENERGY <strong id="sandbox-energy">100</strong></span>
+              <span class="sandbox-stat">SCORE <strong id="sandbox-score">0</strong></span>
+              <button id="sandbox-reset" type="button">RESET</button>
+            </div>
+            <div class="sandbox-hud-bottom">
+              <span id="sandbox-heading">HEADING 12 O'CLOCK</span>
+              <span id="sandbox-zombies">12 HOSTILES</span>
+              <span id="sandbox-command-status" role="status" aria-live="polite">LOCAL READY · ROBOT AUTONOMOUS</span>
+              <form id="sandbox-form">
+                <input id="sandbox-input" maxlength="160" autocomplete="off" placeholder="Move east then fire north / Đi đông rồi bắn bắc" aria-label="Sandbox command" />
+                <button id="sandbox-voice" type="button" aria-label="Toggle voice command">MIC</button>
+                <button type="submit">COMMAND</button>
+              </form>
             </div>
           </div>
 
@@ -590,6 +611,9 @@ export class CombatHUD {
     el('nav-fight').addEventListener('click', () => {
       options.onFightToggle?.();
     });
+    el('nav-sandbox').addEventListener('click', () => {
+      options.onSandboxToggle?.();
+    });
     el('hero-fight-btn')?.addEventListener('click', () => {
       options.onFightToggle?.();
     });
@@ -623,6 +647,19 @@ export class CombatHUD {
     el('fight-reset').addEventListener('click', () => {
       options.onFightReset?.();
       this.showToast('FIGHT RESET');
+    });
+    el('sandbox-reset').addEventListener('click', () => {
+      options.onSandboxReset?.();
+      this.showToast('SANDBOX RESET');
+    });
+    el('sandbox-voice').addEventListener('click', () => options.onVoiceToggle?.());
+    el('sandbox-form').addEventListener('submit', event => {
+      event.preventDefault();
+      const input = el('sandbox-input');
+      const text = input.value.trim();
+      if (!text) return;
+      options.onSandboxCommand?.(text, el('coach-language').value);
+      input.value = '';
     });
     el('result-rematch')?.addEventListener('click', () => {
       options.onFightReset?.();
@@ -967,7 +1004,9 @@ export class CombatHUD {
 
     const fightHud = this._el('fight-hud');
     const fightReset = this._el('fight-reset');
+    const sandboxHud = this._el('sandbox-hud');
     const watermark = this._el('watermark');
+    if (sandboxHud) sandboxHud.style.display = 'none';
     if (fightHud) fightHud.style.display = active ? '' : 'none';
     if (fightReset) fightReset.style.display = active ? '' : 'none';
     if (watermark) watermark.style.display = active ? 'none' : '';
@@ -975,6 +1014,7 @@ export class CombatHUD {
     // Nav button states
     document.getElementById('nav-lab')?.classList.toggle('active', !active);
     document.getElementById('nav-fight')?.classList.toggle('active', active);
+    document.getElementById('nav-sandbox')?.classList.remove('active');
 
     // Playback controls hidden in fight mode
     const playback = document.querySelector('.playback');
@@ -1022,6 +1062,42 @@ export class CombatHUD {
     }
   }
 
+  // ── Sandbox mode UI ────────────────────────────────────────────
+  setSandboxMode(active) {
+    const showcaseEls = document.querySelectorAll('.dossier, .motion-panel, .page-heading, aside');
+    showcaseEls.forEach(el => el.style.display = active ? 'none' : '');
+    document.querySelector('.site-main')?.classList.toggle('fight-mode-active', active);
+    this._el('sandbox-hud').style.display = active ? '' : 'none';
+    this._el('fight-hud').style.display = 'none';
+    this._el('coach-panel').style.display = 'none';
+    this._el('fight-reset').style.display = 'none';
+    this._el('watermark').style.display = active ? 'none' : '';
+    document.getElementById('nav-lab')?.classList.toggle('active', !active);
+    document.getElementById('nav-fight')?.classList.remove('active');
+    document.getElementById('nav-sandbox')?.classList.toggle('active', active);
+    if (active) this.setSandboxFeedback('LOCAL READY · JEV FALLBACK ENABLED · ROBOT AUTONOMOUS');
+  }
+
+  setSandboxFeedback(message, tone = '') {
+    const el = this._el('sandbox-command-status');
+    if (!el) return;
+    el.textContent = message;
+    el.dataset.tone = tone;
+  }
+
+  updateSandboxHUD(state) {
+    if (!state?.player) return;
+    const p = state.player;
+    this._el('sandbox-hp').textContent = `${Math.round(p.health)}`;
+    this._el('sandbox-energy').textContent = `${Math.round(p.energy)}`;
+    this._el('sandbox-score').textContent = `${state.score}`;
+    this._el('sandbox-zombies').textContent = `${state.zombies.length} HOSTILES`;
+    const hour = Math.round(((p.heading % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI / 6)) % 12 || 12;
+    this._el('sandbox-heading').textContent = state.plan?.currentType
+      ? `HEADING ${hour} O'CLOCK · MISSION ${state.plan.currentType.toUpperCase()}`
+      : `HEADING ${hour} O'CLOCK`;
+  }
+
   // ── Replay mode UI ──────────────────────────────────────────────
   setReplayMode(active, info = {}) {
     document.querySelector('.site-main')?.classList.toggle('fight-mode-active', active);
@@ -1030,8 +1106,10 @@ export class CombatHUD {
 
     const fightHud = this._el('fight-hud');
     const fightReset = this._el('fight-reset');
+    const sandboxHud = this._el('sandbox-hud');
     const coachPanel = this._el('coach-panel');
     const replayHud = this._el('replay-hud');
+    if (sandboxHud) sandboxHud.style.display = 'none';
     const watermark = this._el('watermark');
     const fightResult = this._el('fight-result');
 
@@ -1049,6 +1127,7 @@ export class CombatHUD {
 
     document.getElementById('nav-lab')?.classList.toggle('active', !active);
     document.getElementById('nav-fight')?.classList.remove('active');
+    document.getElementById('nav-sandbox')?.classList.remove('active');
   }
 
   updateReplayHUD(replayState) {

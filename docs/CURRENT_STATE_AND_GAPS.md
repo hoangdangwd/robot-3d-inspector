@@ -181,6 +181,9 @@ Time-out hiện có:
 | Sandbox fixed-step movement simulation | Đã có `src/sandbox/SandboxSimulation.js`, `SandboxRules.js` và validation script |
 | Sandbox horde/zombie entities | Đã có `spawnZombie`, `damageZombie`, contact cooldown và death removal |
 | Sandbox beam weapon | Đã có vector-projection target selection, energy/cooldown, damage, score và events |
+| Sandbox Three.js presentation | Đã có `src/sandbox/SandboxMode.js`, horde visuals, beam effect, HUD và lifecycle trong `main.js` |
+| OpenRouter Jev command fallback | Đã có `/api/sandbox/interpret`, typed Decisions request, `typesafe/jev-1.13`, server-side key và boundary tests |
+| Sandbox multi-step plans | Đã có `SandboxPlan`, local compound parser, JEV mission allowlist, interruptible runtime và validation |
 
 ---
 
@@ -215,7 +218,8 @@ Chưa có:
 - Compass HUD;
 - Attack-Move;
 - Patrol;
-- mode Sandbox trong `main.js`.
+- ~~mode Sandbox trong `main.js`~~ — đã có lifecycle `showcase` ↔ `sandbox`, camera, robot/zombie presentation và HUD;
+- kết nối provider thật cần secret OpenRouter trong Worker (`OPENROUTER_API_KEY`); tests hiện dùng fetch seam, không gọi cloud.
 
 Các đoạn code Sandbox trong `architecture.md` hiện là proposal/pseudocode, không phải source đã tồn tại.
 
@@ -230,7 +234,7 @@ Chưa có:
 - multimodal tool-calling live session;
 - latency telemetry p50/p95 cho voice pipeline.
 
-Kiến trúc hiện tại dùng Web Speech API và HTTP Workers AI fallback. Provider live là lựa chọn tương lai, không phải dependency của core gameplay.
+Kiến trúc hiện tại dùng Web Speech API và HTTP fallback. Fight Mode vẫn dùng Workers AI; Sandbox natural-language fallback dùng OpenRouter Decisions API với `typesafe/jev-1.13`. Cả hai provider đều không phải dependency của core gameplay; local parser và simulation tiếp tục chạy khi provider lỗi.
 
 ### 5.3. Whiff/Punish chưa là tín hiệu hạng nhất
 

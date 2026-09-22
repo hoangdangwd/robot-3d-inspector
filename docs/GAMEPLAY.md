@@ -291,6 +291,8 @@ Các action tối thiểu:
 - `ATTACK_MOVE`;
 - `PATROL`.
 
+Câu lệnh phức tạp được biên dịch thành `SandboxPlan`: chuỗi bước bị giới hạn, có thời lượng, có thể bị lệnh trực tiếp cắt ngang. JEV chỉ được chọn các mission allowlist; local simulation vẫn quyết định mục tiêu gần nhất, damage và thứ tự thực thi.
+
 Hướng có thể là:
 
 - giờ đồng hồ tuyệt đối;
