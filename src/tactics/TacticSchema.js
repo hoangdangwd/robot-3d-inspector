@@ -22,6 +22,7 @@ export const TACTIC_LIMITS = Object.freeze({
 const CONDITION_TYPES = new Set([
   'always', 'enemy_attack_start', 'enemy_action', 'self_health_below',
   'self_stamina_below', 'near_edge', 'target_near_edge', 'distance_band',
+  'enemy_whiff',
 ]);
 const DISTANCE_BANDS = new Set(['close', 'mid', 'far']);
 

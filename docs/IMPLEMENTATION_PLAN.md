@@ -228,7 +228,7 @@ Sandbox foundation và whiff/punish domain có thể phát triển độc lập 
 
 **Trạng thái:** Hoàn tất.
 
-**Description:** Chuyển câu text ngắn thành `SandboxIntent`, tái sử dụng normalization pattern của `LocalCommandParser` nhưng không làm thay đổi parser boxing.
+**Description:** Chuyển câu text ngắn thành `SandboxIntent`, tái sử dụng normalization pattern của `OpenRouter Jev` nhưng không làm thay đổi parser boxing.
 
 **Acceptance criteria:**
 
@@ -963,6 +963,7 @@ Whiff/Punish chỉ được xem là hoàn tất khi:
 6. Hit-stop pause simulation hay chỉ presentation?
 7. Camera Sandbox là fixed isometric, follow-camera hay orbit có giới hạn?
 8. Có cần replay cho Sandbox vertical slice đầu tiên không?
-9. Provider live có giá trị đủ lớn so với Web Speech + local parser hay không?
+9. Provider live có giá trị đủ lớn so với Web Speech + Jev hay không?
 
 Không tự động chọn phương án phức tạp nhất. Khi chưa có quyết định, dùng safe/default behavior nhỏ nhất phù hợp với `GAMEPLAY.md`.
+

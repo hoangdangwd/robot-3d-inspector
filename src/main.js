@@ -8,8 +8,8 @@ import { CombatHUD } from './ui/CombatHUD.js';
 import { FightMode } from './combat/FightMode.js';
 import { getAction } from './combat/ActionRegistry.js';
 import { ARENA_RADIUS } from './combat/CombatRules.js';
-import { parseCoachText } from './coaching/LocalCommandParser.js';
-import { parseSandboxCommand, parseSandboxPlanCommand } from './sandbox/SandboxCommandParser.js';
+import { MemoryStore } from './sandbox/MemoryStore.js';
+
 import { SandboxMode } from './sandbox/SandboxMode.js';
 import * as SANDBOX_RULES from './sandbox/SandboxRules.js';
 import { VoiceCoachController } from './coaching/VoiceCoachController.js';
@@ -40,6 +40,7 @@ class RobotFoundryApp {
     this.mode = 'showcase';
     this.fightMode = null;
     this.sandboxMode = null;
+    this.memoryStore = new MemoryStore();
     this.fightStage = null;
     this.replayPlayer = null;
     this.matchSetup = null;
@@ -315,10 +316,12 @@ class RobotFoundryApp {
       defId: this.activeRobotId,
       seed: this._testSeed,
       onStateChange: state => this.hud.updateSandboxHUD(state),
+      onRuleEvent: event => { void this.handleSandboxRuleEvent(event); },
     });
     this.hud.setSandboxMode(true);
     this.frameSandboxArena();
     this.hud.showToast('ZOMBIE SURVIVAL — JEV COMMAND LINK READY');
+    this.memoryStore.reset();
   }
 
   resetSandboxMode() {
@@ -333,6 +336,7 @@ class RobotFoundryApp {
     this._sandboxRequestVersion = (this._sandboxRequestVersion || 0) + 1;
     this.sandboxMode?.dispose();
     this.sandboxMode = null;
+    this.memoryStore = new MemoryStore();
     this.mode = 'showcase';
     this.studio.setVisible(true);
     this.hud.setSandboxMode(false);
@@ -345,41 +349,83 @@ class RobotFoundryApp {
     if (!this.sandboxMode || this.mode !== 'sandbox') return { kind: 'unrecognized', reason: 'sandbox_not_active' };
     const tick = this.sandboxMode.getState().tick;
     const heading = this.sandboxMode.getState().player.heading;
-    const localPlan = parseSandboxPlanCommand(text, { language, currentHeading: heading, tick });
-    if (localPlan.kind === 'sandbox_plan') {
-      const queued = this.sandboxMode.submitPlan(localPlan.plan);
-      this.hud.setSandboxFeedback(queued.ok ? `LOCAL · ${localPlan.plan.steps.length}-STEP MISSION QUEUED` : `REJECTED · ${queued.error.toUpperCase()}`, queued.ok ? 'success' : 'error');
-      return localPlan;
-    }
-    const local = parseSandboxCommand(text, { language, currentHeading: heading, tick });
-    if (local.kind === 'sandbox_intent') {
-      const queued = this.sandboxMode.submitIntent(local.intent);
-      this.hud.setSandboxFeedback(queued.ok ? `LOCAL · ${local.intent.type.toUpperCase()} QUEUED` : `REJECTED · ${queued.error.toUpperCase()}`, queued.ok ? 'success' : 'error');
-      return local;
-    }
 
     const requestVersion = (this._sandboxRequestVersion || 0) + 1;
     this._sandboxRequestVersion = requestVersion;
     this.hud.setSandboxFeedback('ASKING JEV · ROBOT CONTINUES AUTONOMOUSLY');
-    const remote = await this._interpretSandboxWithWorker(text, language, requestVersion, tick, heading);
-    if (!remote || requestVersion !== this._sandboxRequestVersion || this.mode !== 'sandbox') return local;
+
+    const remote = await this._interpretSandboxWithWorker({ mode: 'command', transcript: text, language, requestVersion, tick, heading });
+    if (!remote || requestVersion !== this._sandboxRequestVersion || this.mode !== 'sandbox') return { kind: 'unrecognized', reason: 'stale' };
     if (remote.error) {
       this.hud.setSandboxFeedback(remote.error.message || remote.error, 'error');
-      return local;
+      return { kind: 'unrecognized', reason: 'jev_error' };
     }
-    if (remote.plan) {
-      const queued = this.sandboxMode.submitPlan(remote.plan);
-      this.hud.setSandboxFeedback(queued.ok ? `JEV · ${remote.plan.steps.length}-STEP MISSION QUEUED` : `REJECTED · ${queued.error.toUpperCase()}`, queued.ok ? 'success' : 'error');
+
+    // Jev says this is a standing rule to remember
+    if (remote.type === 'add_rule') {
+      const result = this.memoryStore.add(text, tick);
+      this.hud.setSandboxFeedback(result.ok ? `JEV · RULE LEARNED: "${text.slice(0, 60)}"` : 'RULE REJECTED', result.ok ? 'success' : 'error');
+      return { kind: 'rule_added', text };
+    }
+
+    // Jev says change strategic directive
+    if (remote.type === 'set_directive' && remote.directive) {
+      this.sandboxMode.setDirective(remote.directive);
+      this.hud.setSandboxFeedback(`JEV · STRATEGY: ${remote.directive.toUpperCase()}`, 'success');
+      return { kind: 'directive', directive: remote.directive };
+    }
+
+    // Jev says immediate command
+    if (remote.type === 'immediate' && remote.intent) {
+      const queued = this.sandboxMode.submitIntent(remote.intent);
+      this.hud.setSandboxFeedback(queued.ok ? `JEV · ${remote.intent.type.toUpperCase()} QUEUED` : `REJECTED · ${queued.error.toUpperCase()}`, queued.ok ? 'success' : 'error');
       return remote;
     }
-    const intent = remote.intent;
-    const queued = this.sandboxMode.submitIntent(intent);
-    this.hud.setSandboxFeedback(queued.ok ? `JEV · ${intent.type.toUpperCase()} QUEUED` : `REJECTED · ${queued.error.toUpperCase()}`, queued.ok ? 'success' : 'error');
-    return remote;
+    if (remote.type === 'no_action') {
+      this.hud.setSandboxFeedback('JEV · NO ACTION', 'success');
+      return { kind: 'no_action' };
+    }
+
+    this.hud.setSandboxFeedback('JEV · COULD NOT INTERPRET', 'error');
+    return { kind: 'unrecognized', reason: 'jev_unclear' };
   }
 
-  async _interpretSandboxWithWorker(transcript, language, requestVersion, tick, heading) {
-    const requestId = `sandbox_${requestVersion}_${Date.now().toString(36)}`;
+  async handleSandboxRuleEvent(event) {
+    if (!this.sandboxMode || this.mode !== 'sandbox' || !event?.entries?.length) return;
+    const requestVersion = ++this._sandboxRequestVersion;
+    const state = this.sandboxMode.getState();
+    const remote = await this._interpretSandboxWithWorker({
+      mode: 'rule_event',
+      requestVersion,
+      eventId: event.eventId,
+      tick: event.tick,
+      heading: state.player.heading,
+      event,
+    });
+    if (!remote || requestVersion !== this._sandboxRequestVersion || this.mode !== 'sandbox') return;
+    if (remote.error) {
+      this.hud.setSandboxFeedback(remote.error.message || 'JEV UNAVAILABLE · ROBOT STILL AUTONOMOUS', 'error');
+      return;
+    }
+    this._applySandboxDecision(remote);
+  }
+
+  _applySandboxDecision(remote) {
+    if (remote.type === 'set_directive' && remote.directive) {
+      this.sandboxMode.setDirective(remote.directive);
+      this.hud.setSandboxFeedback('JEV · STRATEGY: ' + remote.directive.toUpperCase(), 'success');
+    } else if (remote.type === 'immediate' && remote.intent) {
+      const queued = this.sandboxMode.submitIntent(remote.intent);
+      this.hud.setSandboxFeedback(queued.ok ? 'JEV · ' + remote.intent.type.toUpperCase() + ' QUEUED' : 'REJECTED · ' + queued.error.toUpperCase(), queued.ok ? 'success' : 'error');
+    } else if (remote.type === 'no_action') {
+      this.hud.setSandboxFeedback('JEV · NO ACTION', 'success');
+    }
+  }
+
+  async _interpretSandboxWithWorker({ mode = 'command', transcript = '', language = 'en-US', requestVersion, tick, heading, event = null, eventId = '' }) {
+    if (this.sandboxJevFetch) return this.sandboxJevFetch({ mode, transcript, language, requestVersion, tick, heading, event, eventId });
+    const requestId = 'sandbox_' + requestVersion + '_' + Date.now().toString(36);
+    const commandId = mode === 'command' ? 'command_' + requestVersion : '';
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3200);
     try {
@@ -387,12 +433,18 @@ class RobotFoundryApp {
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ transcript, language, requestId, tick, currentHeading: heading }),
+        body: JSON.stringify({
+          mode, transcript, language, requestId, requestVersion, eventId, commandId, tick,
+          currentHeading: heading,
+          playerRules: this.memoryStore.toStateString(),
+          gameState: this.sandboxMode?.getJevGameState(),
+          ...(event ? { event } : {}),
+        }),
         signal: controller.signal,
       });
       return await response.json();
     } catch (error) {
-      return { error: { code: 'NETWORK_ERROR', message: error.name === 'AbortError' ? 'JEV TIMEOUT · LOCAL CONTROL STILL ACTIVE' : 'JEV UNAVAILABLE · USE LOCAL COMMANDS' } };
+      return { error: { code: 'NETWORK_ERROR', message: error.name === 'AbortError' ? 'JEV TIMEOUT · ROBOT STILL AUTONOMOUS' : 'JEV UNAVAILABLE · ROBOT STILL AUTONOMOUS' } };
     } finally {
       clearTimeout(timer);
     }
@@ -402,30 +454,26 @@ class RobotFoundryApp {
   async handleCoachText(text, language = 'en-US') {
     const fighterId = 'fighter_a';
     const tick = this.fightMode?.sim.clock.tick ?? 0;
-    const result = parseCoachText(text, { language, fighterId, tick });
     const requestVersion = ++this._coachRequestVersion;
     if (!this.fightMode || this.mode !== 'fight') {
       this.hud.setCoachFeedback('ENTER FIGHT MODE TO COACH', 'error');
-      return result;
+      return { kind: 'unrecognized', reason: 'fight_not_active' };
     }
     if (this.fightMode.timeouts?.active) {
       this.hud.setCoachFeedback('TIME-OUT EDITOR ACTIVE · REVIEW OR CANCEL FIRST', 'error');
-      return result;
+      return { kind: 'unrecognized', reason: 'timeout_active' };
     }
-    if (result.kind !== 'unrecognized') return this._applyCoachIntent(result);
-    if (result.reason === 'persistent_tactic_not_allowed_live') {
-      this.hud.setCoachFeedback('LIVE ONLY: USE TIME-OUT FOR TACTICS', 'error');
-      return result;
-    }
-
-    // Local parser is authoritative for known short calls. Worker is only a
-    // slower interpretation fallback for an unknown phrase.
-    this.hud.setCoachFeedback('ASKING COACH FALLBACK · COMBAT CONTINUES');
+    this.hud.setCoachFeedback('ASKING JEV · COMBAT CONTINUES');
     const remote = await this._interpretWithWorker(text, language, requestVersion);
-    if (!remote || requestVersion !== this._coachRequestVersion || this.mode !== 'fight') return result;
+    if (!remote || requestVersion !== this._coachRequestVersion || this.mode !== 'fight') return { kind: 'unrecognized', reason: 'stale' };
     if (remote.error) {
-      this.hud.setCoachFeedback(remote.error, 'error');
-      return result;
+      const liveTactic = /tactic/i.test(remote.error);
+      this.hud.setCoachFeedback(liveTactic ? 'LIVE ONLY: USE TIME-OUT FOR TACTICS' : remote.error, 'error');
+      return { kind: 'unrecognized', reason: liveTactic ? 'persistent_tactic_not_allowed_live' : 'jev_error' };
+    }
+    if (remote.type === 'no_action') {
+      this.hud.setCoachFeedback('JEV · NO ACTION', 'success');
+      return { kind: 'no_action' };
     }
     const remoteIntent = remote.intent || remote;
     const liveTick = this.fightMode.sim.clock.tick;
@@ -1134,3 +1182,8 @@ try {
   const msg = document.querySelector('.loading-sub');
   if (msg) msg.textContent = `Cannot init WebGL: ${error.message}. Enable hardware acceleration and reload.`;
 }
+
+
+
+
+

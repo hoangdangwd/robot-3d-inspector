@@ -35,7 +35,7 @@ function base(overrides = {}) {
 console.log('\n── SandboxIntent: contract constants ──');
 assert.ok(Object.isFrozen(SandboxIntentType));
 assert.ok(Object.isFrozen(SandboxIntentSource));
-assert.deepEqual(Object.values(SandboxIntentType), ['move', 'stop', 'aim', 'fire', 'attack_target']);
+assert.deepEqual(Object.values(SandboxIntentType), ['move', 'stop', 'aim', 'fire', 'fire_nearest', 'attack_target']);
 assert.deepEqual(Object.values(SandboxIntentSource), ['local', 'voice', 'ai', 'system']);
 ok('intent type and source enums are frozen and bounded');
 

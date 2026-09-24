@@ -16,7 +16,8 @@ const MOVEMENT_TYPES = new Set([
   SandboxIntentType.STOP,
   SandboxIntentType.AIM,
 ]);
-const FIRE_TYPES = new Set([SandboxIntentType.FIRE, SandboxIntentType.ATTACK_TARGET]);
+const FIRE_TYPES = new Set([SandboxIntentType.FIRE, SandboxIntentType.FIRE_NEAREST, SandboxIntentType.ATTACK_TARGET]);
+const TARGET_FIRE_TYPES = new Set([SandboxIntentType.ATTACK_TARGET, SandboxIntentType.FIRE_NEAREST]);
 const TAU = Math.PI * 2;
 
 export class SandboxSimulation {
@@ -56,6 +57,7 @@ export class SandboxSimulation {
       velocity: { x: 0, z: 0 },
       desiredMoveAngle: null,
       isMoving: false,
+      aimAngle: this.initialPlayer.heading,
     };
     this.pendingIntent = null;
     this.activeIntent = null;
@@ -238,6 +240,7 @@ export class SandboxSimulation {
     this.player.x = this.initialPlayer.x;
     this.player.z = this.initialPlayer.z;
     this.player.heading = this.initialPlayer.heading;
+    this.player.aimAngle = this.initialPlayer.heading;
     this.player.health = this.player.maxHealth;
     this.player.energy = this.player.maxEnergy;
     this.player.velocity.x = 0;
@@ -285,6 +288,7 @@ export class SandboxSimulation {
         velocity: { ...this.player.velocity },
         desiredMoveAngle: this.player.desiredMoveAngle,
         isMoving: this.player.isMoving,
+        aimAngle: this.player.aimAngle,
         activeIntent: this.activeIntent,
       },
       plan: this.activePlan ? {
@@ -348,7 +352,27 @@ export class SandboxSimulation {
     this._updateZombies();
     this._resolveZombieContacts(tick);
     this._consumePendingFireIntent(tick);
+    this._updateAim(tick);
     this._resolveBeam(tick);
+  }
+
+  _updateAim(tick) {
+    const fire = this.activeFireIntent;
+    const aim = fire && tick <= fire.expiresAt ? fire.angle : this._nearestThreatAngle();
+    if (aim == null) return;
+    this.player.aimAngle = turnTowards(this.player.aimAngle, aim, R.SANDBOX_TURN_RATE * R.SANDBOX_TICK_DT);
+  }
+
+  _nearestThreatAngle() {
+    let best = null;
+    let bestDist = Infinity;
+    for (const zombie of this.zombies.values()) {
+      const dist = Math.hypot(zombie.x - this.player.x, zombie.z - this.player.z);
+      if (dist >= bestDist) continue;
+      bestDist = dist;
+      best = Math.atan2(zombie.x - this.player.x, -(zombie.z - this.player.z));
+    }
+    return best;
   }
 
   _consumePendingFireIntent(tick) {
@@ -356,8 +380,10 @@ export class SandboxSimulation {
     if (!intent || intent.createdAt > tick) return;
     this.pendingFireIntent = null;
     if (tick > intent.expiresAt) return;
-    if (intent.type === SandboxIntentType.ATTACK_TARGET) {
-      const target = intent.targetId === 'nearest' ? this._nearestZombie() : this.zombies.get(intent.targetId);
+    if (TARGET_FIRE_TYPES.has(intent.type)) {
+      const target = intent.type === SandboxIntentType.FIRE_NEAREST || intent.targetId === 'nearest'
+        ? this._nearestZombie()
+        : this.zombies.get(intent.targetId);
       if (!target) return;
       const angle = Math.atan2(target.x - this.player.x, -(target.z - this.player.z));
       this.activeFireIntent = createSandboxIntent({
@@ -375,8 +401,10 @@ export class SandboxSimulation {
 
   _resolveBeam(tick) {
     let intent = this.activeFireIntent;
-    if (intent?.type === SandboxIntentType.ATTACK_TARGET) {
-      const target = intent.targetId === 'nearest' ? this._nearestZombie() : this.zombies.get(intent.targetId);
+    if (TARGET_FIRE_TYPES.has(intent?.type)) {
+      const target = intent.type === SandboxIntentType.FIRE_NEAREST || intent.targetId === 'nearest'
+        ? this._nearestZombie()
+        : this.zombies.get(intent.targetId);
       if (target) {
         const angle = Math.atan2(target.x - this.player.x, -(target.z - this.player.z));
         intent = this.activeFireIntent = createSandboxIntent({

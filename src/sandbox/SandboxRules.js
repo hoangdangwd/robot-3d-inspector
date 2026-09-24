@@ -25,6 +25,11 @@ export const SANDBOX_BEAM_DAMAGE = 30;
 export const SANDBOX_BEAM_COOLDOWN_TICKS = 12;
 export const SANDBOX_BEAM_ENERGY_COST = 10;
 export const SANDBOX_BEAM_SCORE = 100;
+export const SANDBOX_GATE_RADIUS = 4;
+export const SANDBOX_GATE_X = 0;
+export const SANDBOX_GATE_Z = -SANDBOX_ARENA_RADIUS * 0.75;
+export const SANDBOX_PLAYER_ZONE_RADIUS = 6;
+export const SANDBOX_RULE_EVENT_COOLDOWN_TICKS = 60;
 
 export const SANDBOX_RULES = Object.freeze({
   tickRate: SANDBOX_TICK_RATE,
@@ -48,4 +53,9 @@ export const SANDBOX_RULES = Object.freeze({
   beamCooldownTicks: SANDBOX_BEAM_COOLDOWN_TICKS,
   beamEnergyCost: SANDBOX_BEAM_ENERGY_COST,
   beamScore: SANDBOX_BEAM_SCORE,
+  gateRadius: SANDBOX_GATE_RADIUS,
+  gateX: SANDBOX_GATE_X,
+  gateZ: SANDBOX_GATE_Z,
+  playerZoneRadius: SANDBOX_PLAYER_ZONE_RADIUS,
+  ruleEventCooldownTicks: SANDBOX_RULE_EVENT_COOLDOWN_TICKS,
 });

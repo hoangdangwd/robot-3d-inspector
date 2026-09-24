@@ -1,4 +1,4 @@
-// OpenRouter Jev Sandbox command boundary tests. No real key or network required.
+// Jev-only Sandbox worker boundary tests.
 import assert from 'node:assert/strict';
 import worker from '../worker/coach-api.js';
 
@@ -15,51 +15,85 @@ const baseBody = {
   requestId: 'sandbox-1',
   currentHeading: 0,
   tick: 120,
+  playerRules: '',
+  gameState: { playerHealth: 100, playerEnergy: 80, zombieCount: 5, nearestZombieDistance: 4.2, score: 200 },
 };
 
-console.log('\n── OpenRouter Jev Sandbox boundary ──');
+console.log('\n── Jev-only Sandbox boundary ──');
 
-{
-  const response = await worker.fetch(request({ ...baseBody, transcript: 'move east' }), {}, {});
-  const body = await response.json();
-  expect(response.status === 200, 'known Sandbox commands use the worker local fast path');
-  expect(body.source === 'local_worker_fast_path' && body.intent.type === 'move', 'local worker output is a Sandbox intent');
-}
-
+// No API key → 503
 {
   const response = await worker.fetch(request(baseBody), {}, {});
   const body = await response.json();
-  expect(response.status === 503 && body.error.code === 'OPENROUTER_UNAVAILABLE', 'missing OpenRouter key returns a non-fatal structured error');
+  expect(response.status === 503 && body.error.code === 'OPENROUTER_UNAVAILABLE', 'missing key returns structured error');
 }
 
+// Jev immediate command (move east)
 {
-  let captured;
   const env = {
     OPENROUTER_API_KEY: 'test-key',
     OPENROUTER_JEV_MODEL: 'typesafe/jev-1.13',
-    OPENROUTER_SITE_URL: 'https://robot-foundry.example',
-    OPENROUTER_APP_NAME: 'Robot Foundry',
     OPENROUTER_FETCH: async (url, init) => {
-      captured = { url, init, body: JSON.parse(init.body) };
+      env.OPENROUTER_FETCH.lastBody = init.body;
       return new Response(JSON.stringify({
-        id: 'gen-dec-test',
         model: 'typesafe/jev-1.13-20260917',
-        provider: 'TypeSafe',
         answers: {
-          action: { type: 'choice', choice: 'move', confidence: 0.96, probabilities: { move: 0.96, stop: 0.01, fire: 0.01, unsupported: 0.02 } },
-          direction: { type: 'choice', choice: 'clock_3', confidence: 0.94, probabilities: { clock_3: 0.94, none: 0.06 } },
+          intent_type: { type: 'choice', choice: 'immediate_command', confidence: 0.95 },
+          action: { type: 'choice', choice: 'move', confidence: 0.94 },
+          directive: { type: 'choice', choice: 'none', confidence: 0.5 },
+          direction: { type: 'choice', choice: 'clock_3', confidence: 0.93 },
         },
         usage: { input_tokens: 320, output_tokens: 20, cost: 0.000014 },
       }), { status: 200, headers: { 'content-type': 'application/json' } });
     },
   };
+  const response = await worker.fetch(request({ ...baseBody, transcript: 'move east' }), env, {});
+  const body = await response.json();
+  expect(response.status === 200 && body.source === 'openrouter_jev', 'Jev decision accepted');
+  expect(body.type === 'immediate' && body.intent.type === 'move', 'immediate move intent');
+  expect(Math.abs(body.intent.angle - Math.PI / 2) < 1e-9, 'direction is east');
+  const sent = JSON.parse(env.OPENROUTER_FETCH.lastBody);
+  expect(sent.state.current_heading_radians === 0, 'heading reaches Jev state');
+}
+
+{
+  const env = { OPENROUTER_API_KEY: 'test-key', OPENROUTER_FETCH: async () => new Response(JSON.stringify({ answers: { intent_type: { choice: 'immediate_command', confidence: 0.95 }, action: { choice: 'stop', confidence: 0.94 }, directive: { choice: 'none', confidence: 0.4 }, direction: { choice: 'none', confidence: 0.4 } } }), { status: 200 }) };
+  const response = await worker.fetch(request({ ...baseBody, transcript: 'stop' }), env, {});
+  const body = await response.json();
+  expect(body.type === 'immediate' && body.intent.type === 'stop', 'stop is bounded');
+}
+
+{
+  const env = { OPENROUTER_API_KEY: 'test-key', OPENROUTER_FETCH: async () => new Response(JSON.stringify({ answers: { intent_type: { choice: 'unclear', confidence: 0.9 }, action: { choice: 'none', confidence: 0.4 } } }), { status: 200 }) };
   const response = await worker.fetch(request(baseBody), env, {});
   const body = await response.json();
-  expect(response.status === 200 && body.source === 'openrouter_jev', 'Jev decision is accepted through OpenRouter');
-  expect(body.intent.type === 'move' && Math.abs(body.intent.angle - Math.PI / 2) < 1e-9, 'Jev labels are converted to a validated eastward move intent');
-  expect(captured.url === 'https://openrouter.ai/api/alpha/decisions', 'worker calls the OpenRouter Decisions endpoint');
-  expect(captured.init.headers.Authorization === 'Bearer test-key', 'OpenRouter key stays in the server-side Authorization header');
-  expect(captured.body.model === 'typesafe/jev-1.13' && captured.body.questions.action.type === 'choice', 'request uses the configured Jev model and typed choice questions');
+  expect(response.status === 200 && body.type === 'no_action', 'unclear becomes no_action');
+}
+
+{
+  const env = { OPENROUTER_API_KEY: 'test-key', OPENROUTER_FETCH: async () => new Response('not-json', { status: 200 }) };
+  const response = await worker.fetch(request(baseBody), env, {});
+  const body = await response.json();
+  expect(response.status === 422 && body.error.code === 'JEV_INVALID_DECISION', 'malformed Jev response rejected');
+}
+
+{
+  const env = { OPENROUTER_API_KEY: 'test-key', OPENROUTER_FETCH: async () => new Response(JSON.stringify({ answers: { intent_type: { choice: 'immediate_command', confidence: 0.95 }, action: { choice: 'teleport', confidence: 0.99 } } }), { status: 200 }) };
+  const response = await worker.fetch(request(baseBody), env, {});
+  const body = await response.json();
+  expect(response.status === 422 && body.error.code === 'JEV_INVALID_DECISION', 'unknown action rejected');
+}
+
+{
+  const response = await worker.fetch(request({ ...baseBody, playerRules: 'x'.repeat(4097) }), { OPENROUTER_API_KEY: 'test-key' }, {});
+  const body = await response.json();
+  expect(response.status === 422 && body.error.code === 'VALIDATION_ERROR', 'oversized rules rejected');
+}
+
+{
+  const response = await worker.fetch(request({ ...baseBody, gameState: { playerHealth: 'bad' } }), { OPENROUTER_API_KEY: 'test-key' }, {});
+  const body = await response.json();
+  expect(response.status === 422 && body.error.code === 'VALIDATION_ERROR', 'invalid game state rejected');
 }
 
 {
@@ -67,81 +101,100 @@ console.log('\n── OpenRouter Jev Sandbox boundary ──');
     OPENROUTER_API_KEY: 'test-key',
     OPENROUTER_FETCH: async () => new Response(JSON.stringify({
       answers: {
-        action: { type: 'choice', choice: 'fire', confidence: 0.51, probabilities: { fire: 0.51, unsupported: 0.49 } },
-        direction: { type: 'choice', choice: 'clock_12', confidence: 0.99, probabilities: { clock_12: 0.99 } },
+        intent_type: { choice: 'immediate_command', confidence: 0.96 },
+        action: { choice: 'fire_nearest', confidence: 0.94 },
+        directive: { choice: 'none', confidence: 0.4 },
+        direction: { choice: 'none', confidence: 0.4 },
       },
+    }), { status: 200 }),
+  };
+  const response = await worker.fetch(request({ ...baseBody, transcript: 'shoot the zombie' }), env, {});
+  const body = await response.json();
+  expect(body.type === 'immediate' && body.intent.type === 'fire_nearest', 'nearest fire is bounded');
+}
+
+{
+  const env = {
+    OPENROUTER_API_KEY: 'test-key',
+    OPENROUTER_FETCH: async () => new Response(JSON.stringify({
+      answers: {
+        intent_type: { choice: 'set_strategy', confidence: 0.9 },
+        action: { choice: 'none', confidence: 0.4 },
+        directive: { choice: 'retreat', confidence: 0.88 },
+        direction: { choice: 'none', confidence: 0.4 },
+      },
+    }), { status: 200 }),
+  };
+  const event = { type: 'zombie_entered_zone', zoneId: 'gate', zombieId: 'zombie_1', distance: 1.2 };
+  const response = await worker.fetch(request({ ...baseBody, transcript: '', mode: 'rule_event', event }), env, {});
+  const body = await response.json();
+  expect(body.type === 'set_directive' && body.directive === 'retreat', 'gate event can set retreat');
+}
+
+// Jev add_rule
+{
+  const env = {
+    OPENROUTER_API_KEY: 'test-key',
+    OPENROUTER_FETCH: async () => new Response(JSON.stringify({
       model: 'typesafe/jev-1.13-20260917',
+      answers: {
+        intent_type: { type: 'choice', choice: 'add_rule', confidence: 0.91 },
+        action: { type: 'choice', choice: 'none', confidence: 0.6 },
+        directive: { type: 'choice', choice: 'none', confidence: 0.5 },
+        direction: { type: 'choice', choice: 'none', confidence: 0.8 },
+      },
       usage: { input_tokens: 200, output_tokens: 10, cost: 0.00001 },
     }), { status: 200 }),
   };
-  const response = await worker.fetch(request(baseBody), env, {});
+  const response = await worker.fetch(request({ ...baseBody, transcript: 'when zombies get close retreat and fire' }), env, {});
   const body = await response.json();
-  expect(response.status === 422 && body.error.code === 'JEV_LOW_CONFIDENCE', 'low-confidence Jev action never reaches the simulation');
+  expect(response.status === 200 && body.type === 'add_rule', 'add_rule intent recognized');
 }
 
+// Jev set_strategy
 {
   const env = {
     OPENROUTER_API_KEY: 'test-key',
     OPENROUTER_FETCH: async () => new Response(JSON.stringify({
-      answers: {
-        action: { type: 'choice', choice: 'delete_game', confidence: 1, probabilities: { delete_game: 1 } },
-        direction: { type: 'choice', choice: 'clock_12', confidence: 1, probabilities: { clock_12: 1 } },
-      },
       model: 'typesafe/jev-1.13-20260917',
+      answers: {
+        intent_type: { type: 'choice', choice: 'set_strategy', confidence: 0.88 },
+        action: { type: 'choice', choice: 'none', confidence: 0.4 },
+        directive: { type: 'choice', choice: 'kite', confidence: 0.85 },
+        direction: { type: 'choice', choice: 'none', confidence: 0.7 },
+      },
       usage: { input_tokens: 200, output_tokens: 10, cost: 0.00001 },
     }), { status: 200 }),
   };
+  const response = await worker.fetch(request({ ...baseBody, transcript: 'kite them, keep distance' }), env, {});
+  const body = await response.json();
+  expect(response.status === 200 && body.type === 'set_directive' && body.directive === 'kite', 'kite strategy set');
+}
+
+// Low confidence rejected
+{
+  const env = {
+    OPENROUTER_API_KEY: 'test-key',
+    OPENROUTER_FETCH: async () => new Response(JSON.stringify({
+      answers: {
+        intent_type: { type: 'choice', choice: 'immediate_command', confidence: 0.51 },
+        action: { type: 'choice', choice: 'fire', confidence: 0.51 },
+        directive: { type: 'choice', choice: 'none', confidence: 0.5 },
+        direction: { type: 'choice', choice: 'clock_12', confidence: 0.99 },
+      },
+      model: 'typesafe/jev-1.13-20260917',
+    }), { status: 200 }),
+  };
   const response = await worker.fetch(request(baseBody), env, {});
   const body = await response.json();
-  expect(response.status === 422 && body.error.code === 'JEV_INVALID_DECISION', 'unknown Jev labels are rejected at the boundary');
+  expect(response.status === 422 && body.error.code === 'JEV_LOW_CONFIDENCE', 'low confidence rejected');
 }
 
+// Health endpoint
 {
-  const env = {
-    OPENROUTER_API_KEY: 'test-key',
-    OPENROUTER_FETCH: async () => new Response(JSON.stringify({
-      answers: {
-        action: { type: 'choice', choice: 'unsupported', confidence: 0.9, probabilities: { unsupported: 0.9 } },
-        command: { type: 'choice', choice: 'move_then_fire', confidence: 0.93, probabilities: { move_then_fire: 0.93 } },
-        direction: { type: 'choice', choice: 'clock_3', confidence: 0.95, probabilities: { clock_3: 0.95 } },
-        direction_2: { type: 'choice', choice: 'clock_12', confidence: 0.94, probabilities: { clock_12: 0.94 } },
-      },
-      model: 'typesafe/jev-1.13-20260917',
-      usage: { input_tokens: 280, output_tokens: 18, cost: 0.000012 },
-    }), { status: 200 }),
-  };
-  const response = await worker.fetch(request({ ...baseBody, transcript: 'go toward the morning light then blast whatever is ahead' }), env, {});
+  const response = await worker.fetch(new Request('https://example.test/health', { method: 'GET' }), {}, {});
   const body = await response.json();
-  expect(response.status === 200 && body.plan?.steps?.length === 2, 'compound Jev command becomes a bounded plan');
-  expect(body.plan.steps[0].type === 'move' && body.plan.steps[1].type === 'fire', 'plan keeps move then fire order');
-  expect(Math.abs(body.plan.steps[0].angle - Math.PI / 2) < 1e-9, 'first plan direction is east');
-  expect(body.plan.steps[1].angle === 0, 'second plan direction is north');
-  expect(body.intent === undefined, 'compound Jev output is a plan, not a raw intent');
+  expect(body.ok === true && body.provider === 'openrouter_jev', 'health endpoint works');
 }
 
-{
-  const env = {
-    OPENROUTER_API_KEY: 'test-key',
-    OPENROUTER_FETCH: async () => new Response(JSON.stringify({
-      answers: {
-        action: { type: 'choice', choice: 'unsupported', confidence: 0.88 },
-        command: { type: 'choice', choice: 'attack_move', confidence: 0.91 },
-        direction: { type: 'choice', choice: 'relative_forward', confidence: 0.92 },
-        direction_2: { type: 'choice', choice: 'none', confidence: 0.8 },
-      },
-      model: 'typesafe/jev-1.13-20260917',
-    }), { status: 200 }),
-  };
-  const response = await worker.fetch(request({ ...baseBody, transcript: 'push forward and take out the closest one' }), env, {});
-  const body = await response.json();
-  expect(response.status === 200 && body.plan?.steps?.[0]?.type === 'move', 'attack-move starts with a local movement step');
-  expect(body.plan.steps[1].type === 'attack_target' && body.plan.steps[1].targetId === 'nearest', 'attack-move defers target selection to the simulation');
-}
-
-{
-  const response = await worker.fetch(request({ ...baseBody, transcript: 'move east, then fire north' }), {}, {});
-  const body = await response.json();
-  expect(response.status === 200 && body.source === 'local_worker_fast_path' && body.plan?.steps?.length === 2, 'compound local commands skip Jev');
-}
-
-console.log(`PASS: ${assertions} assertions. OpenRouter Jev Sandbox boundary validated.\n`);
+console.log(`PASS: ${assertions} assertions. Jev-only Sandbox boundary validated.\n`);

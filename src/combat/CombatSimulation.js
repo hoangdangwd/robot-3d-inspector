@@ -42,7 +42,7 @@ export class CombatSimulation {
       downUntil: 0, getUpUntil: 0,
       status: FighterStatus.READY,
       actionId: 'none', actionPhase: ActionPhase.IDLE, actionTick: 0,
-      targetId: 'fighter_b',
+      targetId: 'fighter_b', whiffUntil: 0, whiffActionId: null, whiffReason: null,
     });
 
     this.fighterB = createFighterState({
@@ -54,7 +54,7 @@ export class CombatSimulation {
       downUntil: 0, getUpUntil: 0,
       status: FighterStatus.READY,
       actionId: 'none', actionPhase: ActionPhase.IDLE, actionTick: 0,
-      targetId: 'fighter_a',
+      targetId: 'fighter_a', whiffUntil: 0, whiffActionId: null, whiffReason: null,
     });
 
     this.fighters = new Map([
@@ -286,6 +286,7 @@ export class CombatSimulation {
       }
       case ActionPhase.RECOVERY: {
         if (elapsed >= def.recovery) {
+          this._finishAttack(f, id, baseDef, tick);
           this._clearAction(f, tick);
           this._emit(tick, id, 'action_ended', { actionId: baseDef.id });
         }
@@ -371,10 +372,7 @@ export class CombatSimulation {
       const dist = Math.sqrt(dx * dx + dz * dz);
       if (dist > def.reach) {
         this._hitDedup.add(dedupKey);
-        this._emit(tick, attackerId, 'contact_resolved', {
-          result: 'missed', targetId: attacker.targetId,
-          actionId: baseDef.id, reason: 'out_of_range',
-        });
+        this._emitMiss(tick, attacker, 'out_of_range', def);
         continue;
       }
 
@@ -385,10 +383,7 @@ export class CombatSimulation {
       while (facingDiff < -Math.PI) facingDiff += 2 * Math.PI;
       if (Math.abs(facingDiff) > def.facingHalf) {
         this._hitDedup.add(dedupKey);
-        this._emit(tick, attackerId, 'contact_resolved', {
-          result: 'missed', targetId: attacker.targetId,
-          actionId: baseDef.id, reason: 'bad_facing',
-        });
+        this._emitMiss(tick, attacker, 'bad_facing', def);
         continue;
       }
 
@@ -403,10 +398,7 @@ export class CombatSimulation {
       const defenseData = { defenseId: target.actionId, defenseOutcome };
 
       if (defenseOutcome === 'evade') {
-        this._emit(tick, attackerId, 'contact_resolved', {
-          result: 'missed', targetId: attacker.targetId,
-          actionId: baseDef.id, reason: 'dodged', ...defenseData,
-        });
+        this._emitMiss(tick, attacker, 'dodged', def, defenseData);
         continue;
       }
 
@@ -449,10 +441,17 @@ export class CombatSimulation {
       const postureDmg = Math.max(1, Math.round(def.damage * R.POSTURE_DAMAGE_RATIO));
       target.health  = Math.max(0, target.health  - def.damage);
       target.posture = Math.max(0, target.posture - postureDmg);
+      const punish = target.whiffUntil > 0 && tick <= target.whiffUntil;
       this._emit(tick, attackerId, 'contact_resolved', {
         result: 'hit', targetId: attacker.targetId,
         actionId: baseDef.id, damage: def.damage, postureDamage: postureDmg, ...defenseData,
       });
+      if (punish) {
+        this._emit(tick, attackerId, 'punish', {
+          targetId: target.id, actionId: baseDef.id, whiffActionId: target.whiffActionId,
+          reason: target.whiffReason, recoveryUntil: target.whiffUntil,
+        });
+      }
       // Posture broken: goes DOWN (only if still alive).
       if (target.posture <= 0 && target.health > R.KO_HEALTH) {
         this._clearAction(target, tick);
@@ -462,6 +461,27 @@ export class CombatSimulation {
         this._emit(tick, target.id, 'fighter_down', { sourceActionId: baseDef.id, downUntil: target.downUntil });
       }
     }
+  }
+
+  _emitMiss(tick, attacker, reason, def, extra = {}) {
+    this._emit(tick, attacker.id, 'contact_resolved', {
+      result: 'missed', targetId: attacker.targetId, actionId: def.id, reason,
+      ...extra,
+    });
+    const activeLeft = Math.max(0, def.active - (tick - attacker.actionTick));
+    const recoveryUntil = tick + activeLeft + def.recovery;
+    attacker.whiffUntil = recoveryUntil;
+    attacker.whiffActionId = def.id;
+    attacker.whiffReason = reason;
+    this._emit(tick, attacker.id, 'attack_whiffed', {
+      targetId: attacker.targetId, actionId: def.id, reason, recoveryUntil,
+    });
+  }
+
+  _finishAttack(fighter, id, action, tick) {
+    if (action.family !== 'attack' || fighter.whiffUntil) return;
+    const connected = this.log.toArray().some(event => event.type === 'contact_resolved' && event.fighterId === id && event.data?.actionId === action.id && event.data.result !== 'missed');
+    if (!connected) this._emitMiss(tick, fighter, 'no_contact', applyCapability(action, this._caps.get(id)));
   }
 
   _checkMatchEnd(tick) {

@@ -106,6 +106,8 @@ export class CombatBrain {
       targetNearEdge: Math.hypot(target.x, target.z) > R.ARENA_RADIUS * .78,
       staminaRatio: self.stamina / Math.max(self.maxStamina, 1),
       healthRatio: self.health / Math.max(self.maxHealth, 1),
+      isEnemyWhiffing: (target.whiffUntil || 0) > 0 && (target.whiffUntil || 0) >= (simulation.currentTick || 0),
+      punishWindowTicksRemaining: Math.max(0, (target.whiffUntil || 0) - (simulation.currentTick || 0)),
     };
   }
 

@@ -4,16 +4,11 @@
     "main": "worker/coach-api.js",
     "compatibility_date": "2026-09-09",
     "compatibility_flags": ["nodejs_compat"],
-    "ai": {
-        "binding": "AI",
-        "remote": true,
-    },
     "vars": {
         "ALLOWED_ORIGIN": "https://robot-foundry-7m7.pages.dev",
         "OPENROUTER_JEV_MODEL": "typesafe/jev-1.13",
         "OPENROUTER_SITE_URL": "https://robot-foundry-7m7.pages.dev",
         "OPENROUTER_APP_NAME": "Robot Foundry",
-        "AI_MODEL": "@cf/meta/llama-3.2-3b-instruct",
     },
     "observability": {
         "enabled": true,

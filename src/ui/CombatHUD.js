@@ -1075,7 +1075,7 @@ export class CombatHUD {
     document.getElementById('nav-lab')?.classList.toggle('active', !active);
     document.getElementById('nav-fight')?.classList.remove('active');
     document.getElementById('nav-sandbox')?.classList.toggle('active', active);
-    if (active) this.setSandboxFeedback('LOCAL READY · JEV FALLBACK ENABLED · ROBOT AUTONOMOUS');
+    if (active) this.setSandboxFeedback('JEV READY · ROBOT AUTONOMOUS · TEACH ME RULES');
   }
 
   setSandboxFeedback(message, tone = '') {
@@ -1537,3 +1537,4 @@ const ADHERENCE_LABELS = {
 function _adherenceLabel(reason) {
   return ADHERENCE_LABELS[reason] ?? reason.toUpperCase().replace(/_/g, ' ');
 }
+

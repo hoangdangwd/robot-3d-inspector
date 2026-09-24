@@ -316,7 +316,7 @@ Hệ thống mã nguồn trong dự án đã có sẵn nhiều module nền tả
 |
 | **Xử lý Giọng nói** | `src/coaching/VoiceCoachController.js`<br><br>
 
-<br>`src/coaching/LocalCommandParser.js`<br><br>
+<br>`src/coaching/OpenRouter Jev.js`<br><br>
 
 <br>`worker/coach-api.js`<br> | **Chưa tối ưu về chi phí & độ trễ.** Hiện tại vẫn đang dùng parser cục bộ kết hợp API worker truyền thống. Cần tích hợp WebSocket stream trực tiếp sang Gemini Flash Live hoặc mô hình phân loại nhãn để đạt độ trễ _split-second_.
 
@@ -377,3 +377,4 @@ Hệ thống mã nguồn trong dự án đã có sẵn nhiều module nền tả
 - Huấn luyện viên nói qua mic $\rightarrow$ LLM sinh `TacticPatch`.
 
 - Gán patch vào `RobotReflexScript` $\rightarrow$ Hết Time-out, robot vào sàn đấu thể hiện ngay chiến thuật mới.
+

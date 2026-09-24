@@ -63,10 +63,10 @@ Repository hiện tại (`hoangdangwd/robot-3d-inspector`) đã sở hữu một
                                       ▼
                   ┌────────────────────────────────────────┐
                   │           LOCAL DETERMINISM            │
-                  │    (src/coaching/LocalCommandParser.js)│
+                  │    (src/coaching/OpenRouter Jev.js)│
                   └────────────────────────────────────────┘
                                         Invariant 3: Game loop không bao giờ
-                                        await mạng; local parser là ưu tiên số 1.
+                                        await mạng; local brain tiếp tục khi Jev lỗi.
 
 ```
 
@@ -74,7 +74,7 @@ Repository hiện tại (`hoangdangwd/robot-3d-inspector`) đã sở hữu một
 
 - **Invariant 2 - Ranh Giới Biến Đổi Kịch Bản (Playbook Mutation Boundary):** Trong lúc trận đấu đang diễn ra (_Live Fight_), giọng nói chỉ được phát ra các lệnh ngắn hạn tạm thời thông qua `DirectCommandQueue.js` hoặc `CombatBlackboard.js`. Mọi thay đổi kịch bản mang tính dài hạn bắt buộc phải diễn ra trong **Time-out** (`TimeOutManager.js`), được đóng gói dưới dạng bản nháp đề xuất (`TacticPatch.js`), vượt qua kiểm tra tính hợp lệ (`TacticSchema.js`), hiển thị trên giao diện cho người chơi duyệt trước khi chính thức ghi nhận vào `PlaybookStore.js`.
 
-- **Invariant 3 - Độc Lập Tính Toán Cục Bộ (Local Fast-Path Fallback):** Vòng lặp mô phỏng game không bao giờ được phép phụ thuộc (`await`) vào bất kỳ kết nối mạng hay phản hồi LLM nào. `LocalCommandParser.js` đóng vai trò bộ phân giải tức thì; các yêu cầu gửi ra bên ngoài (như Cloudflare Worker `coach-api.js` hoặc các dịch vụ AI khác) chỉ là lớp dự phòng thứ cấp có cài đặt thời gian ngắt kết nối (timeout $\le 2.5\text{ s}$) và cơ chế tự động hủy bỏ kết quả trễ hạn (stale response drop).
+- **Invariant 3 - Độc Lập Tính Toán Cục Bộ (Local Fast-Path Fallback):** Vòng lặp mô phỏng game không bao giờ được phép phụ thuộc (`await`) vào bất kỳ kết nối mạng hay phản hồi LLM nào. `OpenRouter Jev.js` đóng vai trò bộ phân giải tức thì; các yêu cầu gửi ra bên ngoài (như Cloudflare Worker `coach-api.js` hoặc các dịch vụ AI khác) chỉ là lớp dự phòng thứ cấp có cài đặt thời gian ngắt kết nối (timeout $\le 2.5\text{ s}$) và cơ chế tự động hủy bỏ kết quả trễ hạn (stale response drop).
 
 ---
 
@@ -157,7 +157,7 @@ Mỗi robot mang trong mình một kịch bản với các thông số đặc tr
 [Bật Mic trong Time-out]
           │
           ▼
-[Thu âm & Giải mã Intent] ──► (Workers AI / Gemini Live trả về JSON đề xuất)
+[Thu âm & Giải mã Intent] ──► (OpenRouter Jev trả về JSON đề xuất)
           │
           ▼
 [validateTacticPatch()]   ──► (Kiểm tra Schema, Action ID hợp lệ, xung đột revision)
@@ -193,7 +193,7 @@ Hệ thống xử lý giọng nói tích hợp hai tuyến xử lý song song nh
                       ▼                                               ▼
       [Tuyến Nhanh - Fast Path Local]                [Tuyến Mở Rộng - Cloud Fallback]
       - Web Speech API (Client Transcript)        - Stream qua Cloudflare Worker Proxy
-      - LocalCommandParser.js                      - Trích xuất Intent bằng LLM
+      - OpenRouter Jev.js                      - Trích xuất Intent bằng LLM
       - Regex & Khớp từ khóa đa ngữ                - Hỗ trợ câu nói ngữ cảnh phức tạp
       - Độ trễ xử lý: ≤ 20 ms                        - Độ trễ xử lý: 300 ms - 1500 ms
                       │                                               │
@@ -592,7 +592,7 @@ const punishWindowTicksRemaining = isEnemyWhiffing
 | `src/robots/RobotFactory.js`<br> | Dùng sinh Robot người chơi & clone zombie | Dựng 2 đấu thủ hoàn chỉnh từ catalog
 
 |
-| `src/coaching/LocalCommandParser.js`<br> | Tích hợp `DirectionResolver` (360 độ, la bàn, giờ) | Nhận diện khẩu lệnh đối kháng & Time-out
+| `src/coaching/OpenRouter Jev.js`<br> | Tích hợp `DirectionResolver` (360 độ, la bàn, giờ) | Nhận diện khẩu lệnh đối kháng & Time-out
 
 |
 | `src/coaching/DirectCommandQueue.js`<br> | Nhận lệnh di chuyển tức thời & xả laser | Nhận các lệnh can thiệp ngắn hạn trong trận
@@ -650,4 +650,5 @@ const punishWindowTicksRemaining = isEnemyWhiffing
 
 - Đảm bảo đề xuất chiến thuật từ AI bắt buộc phải hiển thị dạng bản nháp diff để người chơi bấm nút duyệt trước khi nạp vào `PlaybookStore.js`.
 
-- Đo đạc và ghi nhận các chỉ số độ trễ thực tế ($p50 \le 50\text{ ms}$ cho local parser, $p95 \le 2.5\text{ s}$ cho cloud worker) để làm báo cáo khoa học.
+- Đo đạc và ghi nhận các chỉ số độ trễ thực tế ($p50 \le 50\text{ ms}$ cho Jev, $p95 \le 2.5\text{ s}$ cho cloud worker) để làm báo cáo khoa học.
+

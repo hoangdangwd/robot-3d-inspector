@@ -123,6 +123,16 @@ step(turn, 30);
 close(snapshot(turn).player.heading, Math.PI, 'heading converges to move angle', 1e-8);
 ok('heading turns toward the movement angle at a bounded rate');
 
+const strafe = new SandboxSimulation();
+strafe.spawnZombie({ x: 0, z: -6, speed: 0, health: 30 });
+strafe.submitIntent(move(Math.PI));
+strafe.submitIntent(createSandboxIntent({ type: SandboxIntentType.FIRE, source: 'local', priority: 1, createdAt: 0, expiresAt: 40, angle: 0 }));
+step(strafe, 20);
+const split = snapshot(strafe);
+assert.ok(split.player.heading > 2);
+assert.ok(Math.abs(split.player.aimAngle) < 0.2);
+ok('aim tracks the shot while heading follows movement');
+
 console.log('\n── SandboxSimulation: future and expired intents ──');
 const scheduled = new SandboxSimulation();
 scheduled.submitIntent(move(0, 3, 10));

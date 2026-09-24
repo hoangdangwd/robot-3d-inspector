@@ -7,6 +7,7 @@ export const SandboxIntentType = Object.freeze({
   STOP: 'stop',
   AIM: 'aim',
   FIRE: 'fire',
+  FIRE_NEAREST: 'fire_nearest',
   ATTACK_TARGET: 'attack_target',
 });
 
@@ -37,7 +38,7 @@ const TAU = Math.PI * 2;
  * Serializable, validated request for a Sandbox simulation.
  *
  * @typedef {object} SandboxIntent
- * @property {'move'|'stop'|'aim'|'fire'|'attack_target'} type
+ * @property {'move'|'stop'|'aim'|'fire'|'fire_nearest'|'attack_target'} type
  * @property {'local'|'voice'|'ai'|'system'} source
  * @property {number} priority 0..1
  * @property {number} createdAt non-negative simulation tick

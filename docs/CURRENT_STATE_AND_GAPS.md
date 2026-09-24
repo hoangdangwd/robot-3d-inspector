@@ -82,7 +82,7 @@ Luồng hiện tại:
 ```text
 VoiceCoachController hoặc text input
     ↓
-LocalCommandParser
+OpenRouter Jev
     ↓
 DirectCommandQueue hoặc CombatBlackboard
     ↓
@@ -91,12 +91,12 @@ CombatBrain / FightMode
 CombatSimulation
 ```
 
-Nếu local parser không hiểu:
+Nếu Jev không hiểu:
 
 ```text
 HTTP POST /api/coach/interpret
     ↓
-Cloudflare Worker + Workers AI
+Cloudflare Worker + OpenRouter Jev
     ↓
 validated DirectCommand hoặc BlackboardOverride
 ```
@@ -104,7 +104,7 @@ validated DirectCommand hoặc BlackboardOverride
 Đã có:
 
 - tiếng Anh và tiếng Việt;
-- local fast path;
+- Jev request;
 - timeout 2.5 giây cho cloud fallback;
 - request version để loại stale response;
 - confidence threshold;
@@ -115,7 +115,7 @@ validated DirectCommand hoặc BlackboardOverride
 
 ### 3.4. Live Fight vs Time-out
 
-`LocalCommandParser` chủ động từ chối câu có cấu trúc tactic dài hạn trong Live Fight. `DirectCommandQueue` chứa lệnh ngắn hạn; `CombatBlackboard` chứa override có expiry.
+`OpenRouter Jev` chủ động từ chối câu có cấu trúc tactic dài hạn trong Live Fight. `DirectCommandQueue` chứa lệnh ngắn hạn; `CombatBlackboard` chứa override có expiry.
 
 Time-out hiện có:
 
@@ -167,7 +167,7 @@ Time-out hiện có:
 | DirectCommandQueue | Đã có |
 | Local bilingual parser | Đã có |
 | Web Speech adapter | Đã có |
-| Cloudflare Workers AI fallback | Đã có |
+| OpenRouter Jev fallback | Đã có |
 | Tactical schema v1/v2 | Đã có |
 | Tactic patch validation | Đã có |
 | Playbook persistence/revision/history | Đã có |
@@ -234,7 +234,7 @@ Chưa có:
 - multimodal tool-calling live session;
 - latency telemetry p50/p95 cho voice pipeline.
 
-Kiến trúc hiện tại dùng Web Speech API và HTTP fallback. Fight Mode vẫn dùng Workers AI; Sandbox natural-language fallback dùng OpenRouter Decisions API với `typesafe/jev-1.13`. Cả hai provider đều không phải dependency của core gameplay; local parser và simulation tiếp tục chạy khi provider lỗi.
+Kiến trúc hiện tại dùng Web Speech API và HTTP fallback. Fight fallback và Sandbox natural-language đều gọi OpenRouter `typesafe/jev-1.13`. Không còn Cloudflare Workers AI. Provider không phải dependency của core gameplay; Jev và simulation tiếp tục chạy khi provider lỗi.
 
 ### 5.3. Whiff/Punish chưa là tín hiệu hạng nhất
 
@@ -291,7 +291,7 @@ model/manual edit
 
 ### 6.2. Voice architecture trong `req.md` là mục tiêu tùy chọn
 
-`req.md` đề xuất Gemini Live WebSocket. Source hiện tại dùng Cloudflare Workers AI qua HTTP. Không nên coi tên provider hoặc transport là gameplay requirement.
+`req.md` đề xuất Gemini Live WebSocket. Source hiện tại dùng OpenRouter Jev qua HTTP. Không nên coi tên provider hoặc transport là gameplay requirement.
 
 ### 6.3. Chi phí và latency model không phải invariant
 
@@ -317,8 +317,8 @@ Tài liệu tương lai phải giữ rõ bốn vai trò này, không gộp tất
 1. `docs/GAMEPLAY.md` là gameplay source of truth.
 2. Sandbox là vertical slice triển khai tiếp theo nhưng không xóa hoặc thay thế Robot Boxing hiện có.
 3. Text input được triển khai và test trước; voice dùng cùng domain intent contract.
-4. Local parser là fast path bắt buộc cho các lệnh ngắn đã biết.
-5. Cloud/model là fallback hoặc proposal generator, không phải combat dependency.
+4. Jev là đường diễn giải duy nhất cho voice và text.
+5. Jev chỉ tạo dữ liệu miền đã validate và không phải combat dependency.
 6. Live Fight không được sửa playbook.
 7. Direct Command là request có expiry, không phải animation trigger.
 8. Time-out giữ giới hạn 3 lượt và cancel không hoàn lượt theo behavior hiện tại.
@@ -334,7 +334,7 @@ Tài liệu tương lai phải giữ rõ bốn vai trò này, không gộp tất
 | Rủi ro | Mức độ | Cách giảm thiểu |
 |---|---:|---|
 | Sandbox tạo một architecture song song hoàn toàn | Cao | Dùng chung domain intent, event và fixed-step principles; tách mode-specific simulation |
-| Voice provider làm game phụ thuộc mạng | Cao | Local fast path, timeout, stale response drop, optional adapter |
+| Voice provider làm game phụ thuộc mạng | Cao | Timeout, stale response drop, optional adapter |
 | Mesh trở thành combat truth trong Sandbox | Cao | Simulation sở hữu transform/health/damage, renderer chỉ trình bày |
 | Tactic proposal bypass review | Cao | Chỉ `PlaybookStore.commit` sau validation và user confirmation |
 | Scope tăng sang full RTS quá sớm | Cao | Hoàn tất một-robot Sandbox trước multi-unit |
@@ -387,3 +387,9 @@ Ngoài ra README còn tham chiếu một số tài liệu không có trong snaps
 - [x] Provider live được xác định là tùy chọn, không phải dependency.
 - [x] Có implementation plan với task và verification cụ thể.
 - [x] Không thay đổi gameplay/runtime code trong Bước 0.
+
+
+
+
+
+

@@ -124,6 +124,8 @@ export function matchesCondition(condition, view) {
       return Boolean(view?.targetNearEdge);
     case 'distance_band':
       return distanceBand(view?.distance) === condition.band;
+    case 'enemy_whiff':
+      return Boolean(view?.isEnemyWhiffing);
     default:
       return false;
   }

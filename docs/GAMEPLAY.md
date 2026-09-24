@@ -67,7 +67,7 @@ Sandbox không thay thế Robot Boxing. Nó là vertical slice ưu tiên để k
 
 ### 3.1. Tầng chiến lược vĩ mô
 
-Tầng chiến lược được kích hoạt khi có input người chơi hoặc trong Time-out. Nó có thể sử dụng parser cục bộ hoặc dịch vụ AI tùy chọn để chuyển ngôn ngữ tự nhiên thành dữ liệu miền bị giới hạn.
+Tầng chiến lược được kích hoạt khi có input người chơi hoặc trong Time-out. Nó sử dụng Jev (semantic label classification qua OpenRouter Decisions API) để chuyển ngôn ngữ tự nhiên thành dữ liệu miền bị giới hạn. Tất cả voice/text đi qua Jev; không có local parser fallback.
 
 Đầu ra hợp lệ gồm:
 
@@ -313,15 +313,48 @@ Di chuyển thân dưới và hướng ngắm thân trên có thể độc lập
 
 ---
 
+## 8b. Jev architecture và rule memory
+
+### 8b.1. Jev-first command interpretation
+
+Tất cả voice và text input đi thẳng tới Jev (OpenRouter Decisions API). Không có local command parser fallback. Jev classify đồng thời nhiều labels:
+
+- `intent_type`: `immediate_command | add_rule | set_strategy | unclear`
+- `action`: `move | stop | fire | attack_nearest | none`
+- `directive`: `patrol | advance | retreat | hold_and_fire | kite | focus_nearest | focus_largest | flank | idle | none`
+- `direction`: clock/relative/none
+
+Confidence threshold: 0.72. Dưới ngưỡng → reject, robot tiếp tục autonomous.
+
+### 8b.2. Rule memory (session-scoped)
+
+Khi Jev classify `intent_type = add_rule`, transcript được lưu vào MemoryStore (client-side, tồn tại trong session). Các rule tích lũy được gửi kèm trong Jev state context ở mỗi lần gọi tiếp theo, giúp Jev "nhớ" và quyết định thông minh hơn theo thời gian.
+
+Ví dụ:
+- Người chơi nói: "khi zombie đến gần cổng thì phải lùi bắn"
+- Jev classify: `add_rule` → lưu vào memory
+- Lần gọi sau: Jev nhận rule này trong state → khi zombie gần → chọn `retreat`
+
+Giới hạn: tối đa 30 rules, FIFO khi đầy. Người chơi có thể toggle/xóa rules. Reset khi bắt đầu session mới.
+
+### 8b.3. Local reflex layer (SandboxBrain)
+
+SandboxBrain chạy hoàn toàn cục bộ, mỗi 6 sim ticks (~100ms). Nó xử lý:
+
+- Reflex: dodge khi zombie quá gần (< 2.5 units)
+- Strategic behavior: thực thi directive từ Jev (patrol, retreat, kite, v.v.)
+- Auto-fire: tự nhắm và bắn mục tiêu gần nhất/lớn nhất tùy directive
+
+Bot KHÔNG chờ Jev response giữa các quyết định. Jev chỉ thay đổi directive; local brain tự thực thi liên tục.
+
+---
 ## 9. Voice, network và failure behavior
 
 Voice là input tùy chọn. Text input phải dùng cùng một domain contract và vẫn hoạt động khi microphone không khả dụng.
 
-Thứ tự ưu tiên:
+Mọi voice và text của Live Fight, Time-out và Sandbox đi qua Jev. Không có local parser fallback trong runtime.
 
-1. deterministic/local fast path cho lệnh ngắn đã biết;
-2. cloud interpretation tùy chọn cho câu phức tạp;
-3. nếu cloud lỗi, robot vẫn tiếp tục hoạt động và UI hiển thị lỗi không chặn trận đấu.
+Nếu Jev timeout, trả confidence thấp hoặc output không hợp lệ, lệnh hiện tại bị bỏ qua. UI báo lỗi không chặn trận đấu và local brain tiếp tục tự quyết định.
 
 Yêu cầu:
 
@@ -410,3 +443,7 @@ Các vấn đề sau cần quyết định bằng playtest hoặc yêu cầu s�
 - cloud voice provider cuối cùng;
 - tiêu chí chính xác để một hit trong recovery được gắn nhãn `PUNISH!`;
 - hit-stop có pause simulation tick hay chỉ pause presentation.
+
+
+
+

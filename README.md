@@ -47,7 +47,7 @@ pnpm preview
 
 Fight Mode supports bilingual local coaching in English (`en-US`) and Vietnamese (`vi-VN`). Short commands are parsed locally first; optional browser Web Speech input and text input use the same validated `DirectCommand` / `BlackboardOverride` boundary. Audio and transcripts are not persisted.
 
-Unknown short phrases can optionally use the Cloudflare Worker fallback at `/api/coach/interpret`. The Worker validates model output and never receives combat authority. Workers AI is configured as an optional server-side binding; if it is unavailable, the game reports a non-blocking fallback message and autonomous combat continues.
+Unknown short phrases can optionally use the Cloudflare Worker fallback at `/api/coach/interpret`. The Worker validates model output and never receives combat authority. Fight and Sandbox model calls use OpenRouter `typesafe/jev-1.13` with the key only on the Worker. If it is unavailable, the game reports a non-blocking fallback message and autonomous combat continues.
 
 Zombie Survival mode uses the same local-first boundary. `move east`, `stop`, `fire 3 o'clock`, and equivalent Vietnamese commands are resolved immediately in the browser. Natural-language Sandbox commands fall back to `/api/sandbox/interpret`, where OpenRouter's Decisions API uses `typesafe/jev-1.13` typed choices. Jev can only select an allowlisted Sandbox action and direction; it cannot return damage, transforms, animation commands, arbitrary code, or tactical scripts. The simulation validates the resulting `SandboxIntent` before execution.
 
@@ -105,6 +105,6 @@ src/arena/          PBR showcase studio; retained legacy ring modules
 src/camera/         Orbit and showcase camera controls
 src/audio/          Procedural Web Audio feedback
 src/ui/             Fighter roster, dossier, animation/coaching console, responsive styles
-worker/             Optional Cloudflare Worker + Workers AI interpretation fallback
+worker/             Optional Cloudflare Worker + OpenRouter Jev interpretation fallback
 scripts/            Content, domain, Worker and browser smoke-test utilities
 ```
